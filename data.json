@@ -1,0 +1,76 @@
+{
+  "player": {
+    "handle": "Jackson Barkworth",
+    "season": 26,
+    "level": 1,
+    "xp_current": 0.0,
+    "xp_to_next": 10.0,
+    "title": "Novice",
+    "coins": 180
+  },
+  "streaks": {
+    "Chess": 0,
+    "Italian": 0,
+    "Gym": 0,
+    "Jiu-jitsu": 0
+  },
+  "daily_quests": {
+    "date": "2026-01-04",
+    "q1_text": "",
+    "q1_done": false,
+    "q2_text": "",
+    "q2_done": false,
+    "q3_text": "",
+    "q3_done": false,
+    "healthy_eating": "N"
+  },
+  "stats": {
+    "PUSH": 45,
+    "PULL": 62,
+    "SPD": 38,
+    "STM": 58,
+    "DUR": 70,
+    "BAL": 74,
+    "FLX": 38,
+    "RFLX": 50,
+    "POW": 40,
+    "LRN": 65,
+    "LOG": 55,
+    "MEM": 58,
+    "STRAT": 60,
+    "FOCUS": 54,
+    "CREAT": 72,
+    "AWARE": 50,
+    "JUDG": 53,
+    "CALM": 42,
+    "SOC": 46,
+    "LEAD": 48,
+    "NEG": 52,
+    "COM": 50,
+    "EMP": 32,
+    "PRES": 47,
+    "CHESS": 68,
+    "ITALIAN": 12,
+    "JIUJITSU": 22
+  },
+  "xp_rates": {
+    "Admin Work": 0.5,
+    "Design Work": 1.0,
+    "Jiu Jitsu Training": 4.0,
+    "Gym Workout": 3.0,
+    "Italian Studying": 2.0,
+    "Italian Passive listening": 0.2,
+    "Chess - Rated Matches": 2.0,
+    "Chess - Study/ Analysis": 1.0,
+    "Reading": 1.5,
+    "New Skill Learning": 2.4,
+    "Personal Challenge Quest": 3.6,
+    "Recovery": 1.6,
+    "Creative Output": 2.0,
+    "General Life Task": 0.8
+  },
+  "rules": {
+    "streak_bonus_per_day": 1,
+    "healthy_eating_xp": 2
+  }
+}

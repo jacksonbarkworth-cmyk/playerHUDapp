@@ -1,0 +1,1 @@
+date,task,hours,xp_per_hour,xp_earned,notes
