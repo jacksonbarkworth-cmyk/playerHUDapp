@@ -1099,27 +1099,42 @@ with col_panel:
 
     elif section == "Rule Book":
         rulebook_text = """
-    **Core Rule** XP makes progress. XP Wall Debt blocks progress. When XP is earned while debt exists, earned XP pays down debt first. Only remaining XP becomes real gain.
-        
-    #### 1) What This System Tracks
-    - XP: earned progress currency
-    - XP Wall Debt: penalty currency that blocks progression
-    - Level: calculated from Effective XP
-    - Title: unlocked by reaching level ranges
-    - Stats: manually assigned attributes from 0–100
+    **Core Rule**
+    - XP is progress currency.
+    - XP Wall Debt blocks progression.
+    - When XP is earned while debt exists, earned XP pays down debt first. Only leftover XP becomes real XP gain in the selected category.
 
     ---
-
-    #### 2) XP & Debt Interaction
-    - Effective XP = max(0, Total XP − Total Debt)
-    - If debt exists, newly earned XP reduces debt first
-    - Only leftover XP contributes to progression
-    - Level-up requirement formula = Level × 10 XP
-    - Level value is always floored to an integer
+    #### 1) What This System Tracks (Actual)
+    - **XP (by category)**: your stored XP totals (can include decimals)
+    - **XP Wall Debt (by category)**: your stored debt totals (can include decimals)
+    - **Effective XP** = max(0, Total XP − Total Debt)
+    - **Level + Title (displayed)**: computed from **Effective XP**
+    - **XP Gain bar (UI)**: computed from **Raw Total XP** (NOT affected by debt)
+    - **Title Gain bar (UI)**: computed from **Raw Total XP** via the raw level (NOT affected by debt)
+    - **Stats**: manual attributes clamped 0–100
 
     ---
+    #### 2) XP & Debt Interaction (Actual Logic)
+    - **Effective XP = max(0, Total XP − Total Debt)**
+    - If **Total Debt > 0** and you **Add XP**, the system runs debt payoff first:
+    - It pays down debt **proportionally across ALL debt categories** based on each category’s share of total debt at the moment of payment.
+    - If tiny rounding remainder exists, a cleanup pass finishes paying down remaining debt until the payment amount is fully applied.
+    - Only the **leftover XP after debt payment** is added to your chosen XP category.
+    - If you **Minus XP**, it only reduces that XP category (never increases debt).
 
-    #### 3) Titles by Level Range
+    ---
+    #### 3) Level System (Actual Logic)
+    - Level is computed using **floored integer XP**:
+    - The system uses int(floor(xp) before calculating levels (decimals do not count for level calculation).
+    - Level-up requirement for each step:
+    - Requirement to go from Level L to L+1 is **L × 10 XP**
+    - Computation method:
+    - Starting at Level 1, the system repeatedly subtracts the current requirement until it can’t.
+    - The leftover is your **XP inside the current level**.
+
+    ---
+    #### 4) Titles by Level Range (Used for Displayed Title)
     - Novice → Levels 1–5
     - Trainee → Levels 6–10
     - Adept → Levels 11–15
@@ -1142,140 +1157,156 @@ with col_panel:
     - World-Class → Levels 96–100
 
     ---
+    #### 5) What the 3 Bars Mean (Important UI Rules)
+    - **XP Gain bar**
+    - Shows progress inside your current level computed from **Raw Total XP**.
+    - **Debt does NOT move this bar.**
+    - **Title Gain bar**
+    - Shows progress toward the next title threshold using the **Raw Level** derived from **Raw Total XP**.
+    - **Debt does NOT move this bar.**
+    - **XP Debt bar**
+    - Shows Total Debt relative to **DEBT_CAP = 100**.
+    - This is display only; it does not change the other bars.
 
-    #### 4) Coin Economy (Design Only)
+    ---
+    #### 6) XP Earnable Actions (Rates Used by the XP Adjust Tool)
+    Per-hour categories:
+    - Admin Work → 0.5 XP per hour
+    - Design Work → 1.0 XP per hour
+    - Gym Workout → 3.0 XP per hour
+    - Jiu Jitsu Training → 4.0 XP per hour
+    - Italian Studying → 2.0 XP per hour
+    - Italian Passive listening → 0.2 XP per hour
+    - Chess - Rated Matches → 2.0 XP per hour
+    - Chess - Study/ Analysis → 1.0 XP per hour
+    - Reading → 1.5 XP per hour
+    - New Skill Learning → 2.4 XP per hour
+    - Personal Challenge Quest → 3.6 XP per hour
+    - Recovery → 1.6 XP per hour
+    - Creative Output → 2.0 XP per hour
+    - General Life Task → 0.8 XP per hour
+
+    Quest completion categories:
+    - Quest 1 → +3.0 XP (Completion)
+    - Quest 2 → +2.0 XP (Completion)
+    - Quest 3 → +1.0 XP (Completion)
+
+    Streak categories:
+    - Chess Streak → +1.0 XP
+    - Italian Streak → +1.0 XP
+    - Gym Streak → +1.0 XP
+    - Jiu Jitsu Streak → +1.0 XP
+    - Eating Healthy → +1.0 XP
+    - Meet Hydration target → +1.0 XP
+
+    ---
+    #### 7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)
+    Normal debt categories (each Add applies the listed amount):
+    - Skip Training → 2.0 XP debt
+    - Junk Eating → 2.0 XP debt
+    - Drug Use → 5.0 XP debt
+    - Blackout Drunk → 3.0 XP debt
+    - Reckless Driving → 4.0 XP debt
+    - Start Fight → 3.0 XP debt
+    - Doomscrolling → 1.5 XP debt
+    - Miss Work → 4.0 XP debt
+    - Impulsive Spend → 2.5 XP debt
+    - Malicious Deceit → 2.0 XP debt
+    - Break Oath → 6.0 XP debt
+    - All Nighter → 2.0 XP debt
+    - Avoid Duty → 2.0 XP debt
+    - Ignore Injury → 2.5 XP debt
+    - Miss Hydration → 1.0 XP debt
+    - Sleep Collapse → 2.0 XP debt
+    - Ghost Obligation → 3.5 XP debt
+    - Ego Decisions → 2.0 XP debt
+    - No Logging → 1.0 XP debt
+    - Message Pile → 1.5 XP debt
+    - Quest Miss → 3.0 XP debt *(manual judgement; the system does not enforce conditions)*
+
+    Oath debt categories (each Add applies **+6.0 XP debt**):
+    - Oath: No Cheating
+    - Oath: No Betrayal of Trust
+    - Oath: No Stealing
+    - Oath: No Harm Defenseless
+    - Oath: No Malicious Exploit
+    - Oath: Honor Commitments
+    - Oath: Compete w/ Integrity
+    - Oath: Accountability
+    - Oath: No Sabotage Others
+
+    **Important:** The system currently allows both **Break Oath** and individual **Oath: ...** categories to be used. Avoid double-penalizing unless you intentionally want that.
+
+    ---
+    #### 8) Stats (Actual Rules)
+    - Stats are stored under: Physical, Mental, Social, Skill.
+    - Stats are clamped to **0–100**.
+    - The Adjust Stats tool changes values by **±1** per click.
+
+    ---
+    #### 9) Coin Economy (Design Only)
     - £1 = 1 Coin
     - £180 = 180 Coins
     - £600/week = 600 Coins/week
-    - A coin balance does not exist unless implemented
+    - Coins are **not implemented** in the current code.
+    
+    ---
+    #### 10) Stats Meaning Scale (Design Lore)
+    - **-100** → extreme impairment / minimal motor-cognitive function
+    - **-50** → far below average adult
+    - **-40 to -10** → below-average adult variation band
+    - **0** → average untrained adult male baseline
+    - **+50** → trained competitive amateur
+    - **+65** → advanced regional amateur competitor
+    - **+80** → national competitor
+    - **+95** → elite international competitor
+    - **100** → best verified human performance
+    - Negative stats are **not active in code** unless range is expanded
 
     ---
+    #### 11) How to Measure Stats (Reference Benchmarks)
+    **Physical**
+    - **PUSH** → Max push-up test *(avg 25 reps)*
+    - **PULL** → Max pull-up test *(avg 2 reps)*
+    - **SPD** → 100m sprint test *(avg 16.5s)*
+    - **STM** → 5km run test *(avg 35 min)*
+    - **DUR** → Recovery benchmark after stress tests
+    - **BAL** → Single-leg stand test *(avg 45 sec)*
+    - **FLX** → Sit-and-reach test *(avg 30 cm)*
+    - **RFLX** → Visual reaction time *(avg 230 ms)*
+    - **POW** → Power output benchmark *(e.g., medicine ball throw distance)*
 
-    #### 5) XP Earnable Actions
-    - Admin work → 0.5 XP per hour
-    - Design work → 1 XP per hour
-    - Gym training → 3 XP per hour
-    - BJJ training → 4 XP per hour
-    - Italian studying → 2 XP per hour
-    - Italian passive listening → 0.2 XP per hour
-    - Chess rated play → 2 XP per hour
-    - Chess analysis/study → 1 XP per hour
-    - Reading → 1.5 XP per hour
-    - New skill learning → 2.4 XP per hour
-    - Personal challenge quest → 3.6 XP per hour
-    - Recovery protocols → 1.6 XP per hour
-    - Creative output → 2 XP per hour
-    - Quest completion → 1–3 XP based on difficulty
-    - Maintained streak habit → +1 XP daily
+    **Mental**
+    - **LRN** → Recall test after short structured learning
+    - **LOG** → Logic benchmark *(e.g., 20-question reasoning test)*
+    - **MEM** → Digit or item span recall benchmark
+    - **STRAT** → Scenario planning depth benchmark
+    - **FOCUS** → Continuous attention benchmark test
+    - **CREAT** → Originality or idea-generation benchmark
+    - **AWARE** → Observation & environment recall test
+    - **JUDG** → Scenario decision-quality scoring
+    - **CALM** → Accuracy + heart-rate under pressure
 
-    ---
+    **Social**
+    - **SOC** → Social initiation & comfort benchmarks
+    - **LEAD** → Responsibility & group direction audit
+    - **NEG** → Negotiation/persuasion scenario benchmark
+    - **COM** → Explanation clarity & articulation scoring
+    - **EMP** → Emotion recognition & EQ benchmark
+    - **PRES** → Posture & body-language presence audit
 
-    #### 6) Daily Quest Structure
-    - Quest 1 → Physical progress (training or conditioning)
-    - Quest 2 → Mental or skill progress (study or strategy)
-    - Quest 3 → Life or responsibility progress (real challenge or output)
-    - Daily quests grant XP on top of normal XP earning
-    - Quests must represent real effort or they are invalid
-
-    ---
-
-    #### 7) Oath Penalty Rules
-    Breaking any oath results in 6 XP Wall Debt:
-    - No cheating
-    - No betrayal of trust
-    - No stealing
-    - No harm to the defenseless
-    - No malicious manipulation/exploitation
-    - Honor commitments or renegotiate transparently
-    - Compete with integrity
-    - Own your actions (accountability)
-    - No sabotaging others for self-gain
-    - Oaths do not stack unless expanded into multiple debt categories
+    **Skill**
+    - **CHESS** → Rated match benchmark *(e.g., 10-game rating avg)*
+    - **ITALIAN** → A1 assessment benchmark *(reading/speaking/comprehension)*
+    - **JIU-JITSU** → Belt rank or coached evaluation
 
     ---
-
-    #### 8) XP Wall Debt Penalties
-    - Skip scheduled training → 2 XP debt
-    - Junk-heavy eating / off-plan diet → 2 XP debt
-    - Drug consumption → 5 XP debt
-    - Blackout drunk → 3 XP debt
-    - Reckless driving → 4 XP debt
-    - Fighting outside training → 3 XP debt
-    - Doomscrolling past 1 hour → 1.5 XP debt
-    - Miss work hours without notice → 4 XP debt
-    - Unnecessary impulse spend £50+ → 2.5 XP debt
-    - Deceit for harmful advantage → 2 XP debt
-    - All-nighter harming recovery → 2 XP debt
-    - Avoid responsibilities a full day → 2 XP debt
-    - Train while clearly injured → 2.5 XP debt
-    - Miss hydration target → 1 XP debt
-    - Weekly sleep average < 6 hours → 2 XP debt
-    - Ghost obligation → 3.5 XP debt
-    - Ignore feedback / ego decisions → 2 XP debt
-    - Fail to log daily progress → 1 XP debt
-    - Messages unanswered 48+ hours → 1.5 XP debt
-    - Miss 2+ quest categories in one day → 3 XP debt
-    - Break personal oath → 6 XP debt
-
-    ---
-
-    #### 9) Stats Interpretation Scale (Design Meaning)
-    - −100 → extreme impairment
-    - −50 → far below average adult
-    - −40 to −10 → below-average adult band
-    - 0 → average untrained adult baseline
-    - +50 → trained competitive amateur
-    - +65 → advanced regional amateur
-    - +80 → national competitor
-    - +95 → elite international
-    - 100 → best verified human performance
-    - Negative stats are not active unless the code is modified to support them
-
-    ---
-
-    #### 10) Stats Measurement Rules
-    Physical:
-    - PUSH → max push-ups (avg 25)
-    - PULL → max pull-ups (avg 2)
-    - SPD → 100m sprint (avg 16.5s)
-    - STM → 5km run (avg 35 min)
-    - DUR → recovery benchmark
-    - BAL → single-leg stand (avg 45s)
-    - FLX → sit-and-reach (avg 30cm)
-    - RFLX → reaction test (avg 230ms)
-    - POW → force/power benchmark
-
-    Mental:
-    - LRN → recall after short structured study
-    - LOG → logic question benchmark
-    - MEM → digit/list recall benchmark
-    - STRAT → planning depth benchmark
-    - FOCUS → continuous attention benchmark
-    - CREAT → originality benchmark
-    - AWARE → observation benchmark
-    - JUDG → scenario decision scoring
-    - CALM → heart-rate + accuracy under stress
-
-    Social:
-    - SOC → social initiation benchmark
-    - LEAD → group responsibility benchmark
-    - NEG → persuasion/negotiation benchmark
-    - COM → explanation clarity benchmark
-    - EMP → emotion recognition benchmark
-    - PRES → posture & body language audit
-
-    Skills:
-    - CHESS → 10 rated games benchmark
-    - ITALIAN → A1 language benchmark
-    - JIU-JITSU → belt or coached evaluation benchmark
-
-    ---
-
-    #### 11) System Constraints
-    - Stats are clamped to 0–100
-    - Coins are not implemented
-    - Levels are floored integers
-    - Rulebook does not activate mechanics without real logic implemented
+    #### 12) System Constraints (Mechanics Do Not Auto-Trigger)
+    - Stats are clamped to **0..100**
+    - Coins are **not implemented**
+    - Levels use **floored integer XP**
+    - Rulebook text does **not activate mechanics** without implemented logic
+    
     """
 
         # Render rulebook text
