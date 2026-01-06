@@ -1,5 +1,7 @@
 import streamlit as st
 import math
+import json
+import requests
 
 st.set_page_config(page_title="Player HUD", layout="wide")
 
@@ -59,33 +61,84 @@ DEFAULT_DEBT_VALUES = {
     "Quest Miss": 0.0,
 }
 
-# ---------- SESSION SYNC (XP) ----------
-if "xp_values" not in st.session_state:
-    st.session_state.xp_values = {}
+# ---------- HELPERS ----------
+def coerce_and_align(loaded: dict, defaults: dict) -> dict:
+    """
+    Keep only the default keys, fill missing keys from defaults,
+    and coerce values to float safely.
+    """
+    out = {}
+    for k, dv in defaults.items():
+        try:
+            out[k] = float(loaded.get(k, dv))
+        except Exception:
+            out[k] = float(dv)
+    return out
 
-for k, v in DEFAULT_XP_VALUES.items():
-    if k not in st.session_state.xp_values:
-        st.session_state.xp_values[k] = float(v)
+# ---------- CLOUD SAVE (SUPABASE) ----------
+CLOUD_ENABLED = (
+    "SUPABASE_URL" in st.secrets
+    and "SUPABASE_SERVICE_ROLE_KEY" in st.secrets
+    and "SAVE_KEY" in st.secrets
+)
+
+if CLOUD_ENABLED:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
+    SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+    SAVE_KEY = st.secrets["SAVE_KEY"]
+
+    _SB_HEADERS = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    def cloud_load_state():
+        url = f"{SUPABASE_URL}/rest/v1/player_state"
+        params = {"save_key": f"eq.{SAVE_KEY}", "select": "xp_values,debt_values"}
+        r = requests.get(url, headers=_SB_HEADERS, params=params, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase load failed ({r.status_code}): {r.text}")
+        rows = r.json()
+        if not rows:
+            return None
+        return rows[0].get("xp_values", {}), rows[0].get("debt_values", {})
+
+    def cloud_save_state(xp_values: dict, debt_values: dict):
+        url = f"{SUPABASE_URL}/rest/v1/player_state"
+        payload = {"save_key": SAVE_KEY, "xp_values": xp_values, "debt_values": debt_values}
+        headers = {**_SB_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"}
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase save failed ({r.status_code}): {r.text}")
+else:
+    def cloud_load_state():
+        return None
+
+    def cloud_save_state(xp_values: dict, debt_values: dict):
+        return None
+
+# ---------- CLOUD INIT (XP + DEBT) ----------
+# IMPORTANT: If cloud is down/misconfigured, app should still run with defaults.
+if "xp_values" not in st.session_state or "debt_values" not in st.session_state:
+    try:
+        loaded = cloud_load_state()
+    except Exception as e:
+        st.warning(f"Cloud sync unavailable. Using local defaults for this session.\n\nDetails: {e}")
+        loaded = None
+
+    if loaded is None:
+        st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
+        st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
+        # Try seeding cloud, but don't crash if it fails
+        try:
+            cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+        except Exception as e:
+            st.warning(f"Could not seed cloud save.\n\nDetails: {e}")
     else:
-        st.session_state.xp_values[k] = float(st.session_state.xp_values[k])
-
-for k in list(st.session_state.xp_values.keys()):
-    if k not in DEFAULT_XP_VALUES:
-        del st.session_state.xp_values[k]
-
-# ---------- SESSION SYNC (DEBT) ----------
-if "debt_values" not in st.session_state:
-    st.session_state.debt_values = {}
-
-for k, v in DEFAULT_DEBT_VALUES.items():
-    if k not in st.session_state.debt_values:
-        st.session_state.debt_values[k] = float(v)
-    else:
-        st.session_state.debt_values[k] = float(st.session_state.debt_values[k])
-
-for k in list(st.session_state.debt_values.keys()):
-    if k not in DEFAULT_DEBT_VALUES:
-        del st.session_state.debt_values[k]
+        xp_loaded, debt_loaded = loaded
+        st.session_state.xp_values = coerce_and_align(xp_loaded, DEFAULT_XP_VALUES)
+        st.session_state.debt_values = coerce_and_align(debt_loaded, DEFAULT_DEBT_VALUES)
 
 # ---------- BACKGROUND RULES: LEVEL + TITLE SYSTEM ----------
 MAX_LEVEL = 100
@@ -113,10 +166,8 @@ TITLE_RANGES = [
     ("World-Class", 96, 100),
 ]
 
-
 def level_requirement(level: int) -> float:
     return float(level * 10)
-
 
 def title_for_level(level: int) -> str:
     for title, lo, hi in TITLE_RANGES:
@@ -124,14 +175,12 @@ def title_for_level(level: int) -> str:
             return title
     return "Unranked"
 
-
 def title_next_threshold(level: int) -> int:
     for _title, lo, hi in TITLE_RANGES:
         if lo <= level <= hi:
             next_level = hi + 1
             return next_level if next_level <= TITLE_RANGES[-1][2] else hi
     return level
-
 
 def compute_level(total_xp: float, max_level: int = MAX_LEVEL) -> tuple[int, float, float]:
     total_xp_int = max(0, int(math.floor(total_xp)))
@@ -150,7 +199,6 @@ def compute_level(total_xp: float, max_level: int = MAX_LEVEL) -> tuple[int, flo
     req = level_requirement(level)
     xp_in_level = remaining
     return level, xp_in_level, req
-
 
 # ---------- GLOBAL STYLES ----------
 st.markdown(
@@ -511,10 +559,18 @@ with col_panel:
                     0.0,
                     float(st.session_state.xp_values[adjust_cat]) + delta,
                 )
+                try:
+                    cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+                except Exception as e:
+                    st.error(f"Cloud save failed: {e}")
                 st.rerun()
 
         if st.button("Reset XP to defaults", key="reset_xp_bottom"):
             st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
+            try:
+                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+            except Exception as e:
+                st.error(f"Cloud save failed: {e}")
             st.rerun()
 
     elif section == "XP wall debt":
@@ -563,10 +619,18 @@ with col_panel:
                     0.0,
                     float(st.session_state.debt_values[debt_cat]) + delta,
                 )
+                try:
+                    cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+                except Exception as e:
+                    st.error(f"Cloud save failed: {e}")
                 st.rerun()
 
         if st.button("Reset Debt to defaults", key="reset_debt_bottom"):
             st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
+            try:
+                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+            except Exception as e:
+                st.error(f"Cloud save failed: {e}")
             st.rerun()
 
     elif section == "Physical Stats":
