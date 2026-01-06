@@ -11,7 +11,7 @@ if "section" not in st.session_state:
 
 # ---------- XP BREAKDOWN DEFAULTS (SOURCE OF TRUTH) ----------
 DEFAULT_XP_VALUES = {
-    "Admin Work": 4.0,
+    "Admin Work": 0.0,
     "Design Work": 0.0,
     "Jiu Jitsu Training": 0.0,
     "Gym Workout": 0.0,
@@ -27,13 +27,13 @@ DEFAULT_XP_VALUES = {
     "General Life Task": 0.0,
     "Quest 1": 0.0,
     "Quest 2": 0.0,
-    "Quest 3": 1.0,
+    "Quest 3": 0.0,
     "Chess Streak": 0.0,
     "Italian Streak": 0.0,
     "Gym Streak": 0.0,
     "Jiu Jitsu Streak": 0.0,
-    "Eating Healthy": 1.0,
-    "Meet Hydration target": 1.0,
+    "Eating Healthy": 0.0,
+    "Meet Hydration target": 0.0,
 }
 
 # ---------- XP WALL DEBT DEFAULTS (SOURCE OF TRUTH) ----------
@@ -553,6 +553,7 @@ with col_panel:
         )
 
         # ---------- INLINE (NO BOX) ADJUST XP CONTROLS ----------
+        st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Adjust XP</div>', unsafe_allow_html=True)
 
         c_cat, c_mode, c_amt, c_apply, c_reset = st.columns([3, 2, 2, 1.6, 2.2])
@@ -625,6 +626,7 @@ with col_panel:
         )
 
         # ---------- INLINE (NO BOX) ADJUST DEBT CONTROLS ----------
+        st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Adjust Debt</div>', unsafe_allow_html=True)
 
         d_cat, d_mode, d_amt, d_apply, d_reset = st.columns([3, 2, 2, 1.6, 2.2])
