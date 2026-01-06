@@ -9,6 +9,9 @@ st.set_page_config(page_title="Player HUD", layout="wide")
 if "section" not in st.session_state:
     st.session_state.section = "XP Breakdown"
 
+if st.session_state.section in ["XP wall debt", "XP wall Debt"]:
+    st.session_state.section = "XP Wall Debt"
+
 # ---------- XP BREAKDOWN DEFAULTS (SOURCE OF TRUTH) ----------
 DEFAULT_XP_VALUES = {
     "Admin Work": 0.0,
@@ -80,6 +83,18 @@ def xp_delta_from_choice(category: str, choice: str) -> float:
 
 
 # ---------- XP WALL DEBT DEFAULTS (SHORT NAMES, 3 WORDS MAX) ----------
+OATH_KEYS = [
+    "Oath: No Cheating",
+    "Oath: No Betrayal of Trust",
+    "Oath: No Stealing",
+    "Oath: No Harm Defenseless",
+    "Oath: No Malicious Exploit",
+    "Oath: Honor Commitments",
+    "Oath: Compete w/ Integrity",
+    "Oath: Accountability",
+    "Oath: No Sabotage Others",
+]
+
 DEFAULT_DEBT_VALUES = {
     "Skip Training": 0.0,
     "Junk Eating": 0.0,
@@ -102,6 +117,17 @@ DEFAULT_DEBT_VALUES = {
     "No Logging": 0.0,
     "Message Pile": 0.0,
     "Quest Miss": 0.0,
+        # --- OATH DEBT ITEMS (each Add = +6 XP debt) ---
+    "Oath: No Cheating": 0.0,
+    "Oath: No Betrayal of Trust": 0.0,
+    "Oath: No Stealing": 0.0,
+    "Oath: No Harm Defenseless": 0.0,
+    "Oath: No Malicious Exploit": 0.0,
+    "Oath: Honor Commitments": 0.0,
+    "Oath: Compete w/ Integrity": 0.0,
+    "Oath: Accountability": 0.0,
+    "Oath: No Sabotage Others": 0.0,
+
 }
 
 DEBT_PENALTY = {
@@ -126,6 +152,16 @@ DEBT_PENALTY = {
     "No Logging": 1.0,
     "Message Pile": 1.5,
     "Quest Miss": 3.0,
+        # --- OATH PENALTIES (each Add = +6 XP debt) ---
+    "Oath: No Cheating": 6.0,
+    "Oath: No Betrayal of Trust": 6.0,
+    "Oath: No Stealing": 6.0,
+    "Oath: No Harm Defenseless": 6.0,
+    "Oath: No Malicious Exploit": 6.0,
+    "Oath: Honor Commitments": 6.0,
+    "Oath: Compete w/ Integrity": 6.0,
+    "Oath: Accountability": 6.0,
+    "Oath: No Sabotage Others": 6.0,
 }
 
 # ---------- STATS DEFAULTS ----------
@@ -707,11 +743,12 @@ debt_warning = (
 
 effective_xp = max(0.0, xp_total - debt_total)
 
-level, _xp_in_level_int, xp_required = compute_level(effective_xp, MAX_LEVEL)
+level, xp_in_level, xp_required = compute_level(effective_xp, MAX_LEVEL)
 title = title_for_level(level)
 
-xp_in_level_display = xp_total  # show your total XP with decimals
-xp_pct = max(0, min(100, (xp_in_level_display / xp_required) * 100)) if xp_required > 0 else 0
+# Progress to NEXT level should be based on XP inside the current level
+xp_in_level_display = float(xp_in_level)
+xp_pct = 0.0 if xp_required <= 0 else max(0.0, min(100.0, (xp_in_level_display / xp_required) * 100.0))
 
 title_next = title_next_threshold(level)
 title_pct = 0 if title_next <= 0 else max(0, min(100, (level / title_next) * 100))
@@ -771,7 +808,7 @@ with col_hud:
 with col_panel:
     menu_options = [
         "XP Breakdown",
-        "XP wall debt",
+        "XP Wall Debt",
         "Physical Stats",
         "Mental Stats",
         "Social Stats",
@@ -878,29 +915,59 @@ with col_panel:
 
 
     # -------- XP WALL DEBT --------
-    elif section == "XP wall debt":
+    elif section == "XP Wall Debt":
         debt_items = list(DEFAULT_DEBT_VALUES.keys())
 
+        # split: normal debt vs oath debt
+        normal_debt_items = [k for k in debt_items if k not in OATH_KEYS]
+        oath_debt_items = [k for k in debt_items if k in OATH_KEYS]
+
+        # --- NORMAL DEBT ROWS ---
         rows_html = "\n".join(
             f"""
             <div class="xp-row">
                 <div class="xp-name">{item}</div>
-                <div class="xp-val-debt">{fmt_xp(st.session_state.debt_values[item])} XP</div>
+                <div class="xp-val-debt">{fmt_xp(st.session_state.debt_values.get(item, 0.0))} XP</div>
             </div>
             """
-            for item in debt_items
+            for item in normal_debt_items
         )
 
         st.markdown(
             f"""
             <div class="panel">
-                <div class="panel-title">XP wall debt</div>
+                <div class="panel-title">XP Wall Debt</div>
                 {rows_html}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
+        # --- OATH DEBT ROWS (same style rows) ---
+        oath_rows_html = "\n".join(
+            f"""
+            <div class="xp-row">
+                <div class="xp-name">{item}</div>
+                <div class="xp-val-debt">{fmt_xp(st.session_state.debt_values.get(item, 0.0))} XP</div>
+            </div>
+            """
+            for item in oath_debt_items
+        )
+
+        st.markdown(
+            f"""
+            <div class="panel">
+                <div class="panel-title">Oath Debt (Each Add = +6 XP)</div>
+                <div style="opacity:0.9; font-weight:800; line-height:1.6; margin-bottom:10px;">
+                    These are real debt categories. Use <b>Adjust Debt</b> to add/remove them.
+                </div>
+                {oath_rows_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # --- SPACING BEFORE ADJUST CONTROLS ---
         st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Adjust Debt</div>', unsafe_allow_html=True)
 
@@ -921,7 +988,7 @@ with col_panel:
 
             st.session_state.debt_values[debt_cat] = max(
                 0.0,
-                float(st.session_state.debt_values[debt_cat]) + float(delta)
+                float(st.session_state.debt_values.get(debt_cat, 0.0)) + float(delta)
             )
 
             save_all(
@@ -1201,13 +1268,10 @@ with col_panel:
         # Invisible spacing below panel (optional)
         st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
 
-        # Settings UI stays outside the rulebook text
-        with st.expander("⚙️ Settings", expanded=False):
-            if st.button("Reset ALL", key="reset_all_btn_bottom"):
-                reset_all()
+with st.expander("⚙️ Settings", expanded=False):
+    if st.button("Reset ALL", key="reset_all_btn_bottom"):
+        reset_all()
 
-    else:
-        pass
 
 
 
