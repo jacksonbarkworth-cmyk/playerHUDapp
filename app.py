@@ -219,11 +219,11 @@ st.markdown(
     header, [data-testid="stHeader"], [data-testid="stToolbar"] { background: transparent !important; }
 
     section.main > div.block-container{
-        max-width: 1200px !important;
-        padding-top: 38px !important;
-        padding-bottom: 38px !important;
-        padding-left: 18px !important;
-        padding-right: 18px !important;
+        padding-top: 22px !important;
+        padding-bottom: 22px !important;
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+
         margin: 0 auto !important;
     }
 
@@ -420,9 +420,37 @@ st.markdown(
         padding: 14px 16px !important;
     }
 
-    @media (max-width: 900px){
-        .hud-title{ text-align: center; }
+    @media (max-width: 600px){
+    .hud-title{
+        font-size: 26px !important;
+        text-align: center;
+        margin-bottom: 10px;
     }
+    .hud-box, .progress-box, .panel{
+        max-width: 100% !important;
+        padding: 10px 12px !important;
+        font-size: 13px !important;
+        border-width: 1.4px !important;
+        margin-bottom: 10px !important;
+    }
+    .panel-title{
+        font-size: 15px !important;
+        margin-bottom: 6px !important;
+    }
+    .xp-row{
+        font-size: 13px !important;
+        padding: 4px 0 !important;
+        gap: 8px !important;
+    }
+    .glow-bar{
+        height: 16px !important;
+        margin-top: 5px !important;
+    }
+    .glow-bar-fill, .glow-bar-fill-red{
+        transition: width 0.18s ease-out !important;
+    }
+}
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -450,10 +478,7 @@ DEBT_CAP = 100.0
 debt_pct = 0 if DEBT_CAP <= 0 else max(0, min(100, (debt_total / DEBT_CAP) * 100))
 
 # ---------- MAIN LAYOUT ----------
-col_char, col_hud, col_panel = st.columns([1, 2, 1], vertical_alignment="top")
-
-with col_char:
-    st.image("profile_photo.png", use_container_width=True)
+col_hud, col_panel = st.columns([2, 1], vertical_alignment="top")
 
 with col_hud:
     st.markdown('<div class="hud-title">PLAYER HUD</div>', unsafe_allow_html=True)
@@ -461,12 +486,12 @@ with col_hud:
     st.markdown(
         """
         <div class="hud-box">
-        <strong>Name:</strong> Random<br>
-        <strong>Age:</strong> Random<br>
-        <strong>DOB:</strong> Random<br>
-        <strong>Region:</strong> Random<br>
-        <strong>Height:</strong> Random<br>
-        <strong>Weight:</strong> Random
+        <strong>Name:</strong> Jackson Barkworth<br>
+        <strong>Age:</strong> 22<br>
+        <strong>DOB:</strong> 06/11/2003<br>
+        <strong>Region:</strong> United Kingdom<br>
+        <strong>Height:</strong> 5'9<br>
+        <strong>Weight:</strong> 14 Stone
         </div>
         """,
         unsafe_allow_html=True,
