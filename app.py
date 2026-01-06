@@ -449,6 +449,22 @@ st.markdown(
     .glow-bar-fill, .glow-bar-fill-red{
         transition: width 0.18s ease-out !important;
     }
+    div[data-testid="stButton"] > button {
+    font-size: 12px !important;
+    padding: 6px 8px !important;
+    min-height: 34px !important;
+    }
+
+    div[data-testid="stSelectbox"] div[role="combobox"] {
+        font-size: 12px !important;
+        min-height: 34px !important;
+        padding: 4px 8px !important;
+    }
+
+    div[data-testid="stSelectbox"] ul {
+        font-size: 12px !important;
+    }
+
 }
 
     </style>
@@ -826,3 +842,4 @@ with col_panel:
             """,
             unsafe_allow_html=True,
         )
+
