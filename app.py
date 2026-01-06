@@ -354,6 +354,22 @@ st.markdown(
         font-weight: 900 !important;
     }
 
+    /* ---- FORCE SELECTBOX TO BE "CLICK-ONLY" (HIDE TYPE-TO-SEARCH INPUT) ----
+       Streamlit's selectbox is implemented with an internal input. Hiding it prevents typing,
+       while still allowing clicking and selecting from the dropdown list.
+    */
+    div[data-testid="stSelectbox"] input{
+        opacity: 0 !important;
+        height: 0px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: 0 !important;
+    }
+    div[data-testid="stSelectbox"] input:focus{
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
     div[data-testid="stNumberInput"] input{
         border-radius: 12px !important;
         background: rgba(0,3,20,0.55) !important;
@@ -536,14 +552,19 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        with st.container(border=True):
-            st.markdown('<div class="panel-title">Adjust XP</div>', unsafe_allow_html=True)
+        # ---------- INLINE (NO BOX) ADJUST XP CONTROLS ----------
+        st.markdown('<div class="panel-title">Adjust XP</div>', unsafe_allow_html=True)
 
+        c_cat, c_mode, c_amt, c_apply, c_reset = st.columns([3, 2, 2, 1.6, 2.2])
+
+        with c_cat:
             adjust_cat = st.selectbox("Category", list(DEFAULT_XP_VALUES.keys()), key="adjust_cat")
 
-            c1, c2 = st.columns([1, 2])
-            adjust_mode = c1.selectbox("Mode", ["Add", "Minus"], key="adjust_mode")
-            adjust_amt = c2.number_input(
+        with c_mode:
+            adjust_mode = st.selectbox("Mode", ["Add", "Minus"], key="adjust_mode")
+
+        with c_amt:
+            adjust_amt = st.number_input(
                 "Amount",
                 min_value=0.0,
                 max_value=100.0,
@@ -553,19 +574,25 @@ with col_panel:
                 key="adjust_amt",
             )
 
-            if st.button("Apply", key="apply_adjust"):
-                delta = float(adjust_amt) if adjust_mode == "Add" else -float(adjust_amt)
-                st.session_state.xp_values[adjust_cat] = max(
-                    0.0,
-                    float(st.session_state.xp_values[adjust_cat]) + delta,
-                )
-                try:
-                    cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-                except Exception as e:
-                    st.error(f"Cloud save failed: {e}")
-                st.rerun()
+        with c_apply:
+            apply_clicked = st.button("Apply", key="apply_adjust")
 
-        if st.button("Reset XP to defaults", key="reset_xp_bottom"):
+        with c_reset:
+            reset_clicked = st.button("Reset XP to defaults", key="reset_xp_inline")
+
+        if apply_clicked:
+            delta = float(adjust_amt) if adjust_mode == "Add" else -float(adjust_amt)
+            st.session_state.xp_values[adjust_cat] = max(
+                0.0,
+                float(st.session_state.xp_values[adjust_cat]) + delta,
+            )
+            try:
+                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+            except Exception as e:
+                st.error(f"Cloud save failed: {e}")
+            st.rerun()
+
+        if reset_clicked:
             st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
             try:
                 cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
@@ -576,11 +603,12 @@ with col_panel:
     elif section == "XP wall debt":
         debt_items = list(DEFAULT_DEBT_VALUES.keys())
 
+        # ✅ Add "XP" unit here
         rows_html = "\n".join(
             f"""
             <div class="xp-row">
                 <div class="xp-name">{item}</div>
-                <div class="xp-val-debt">{st.session_state.debt_values[item]:.1f}</div>
+                <div class="xp-val-debt">{st.session_state.debt_values[item]:.1f} XP</div>
             </div>
             """
             for item in debt_items
@@ -596,14 +624,19 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        with st.container(border=True):
-            st.markdown('<div class="panel-title">Adjust Debt</div>', unsafe_allow_html=True)
+        # ---------- INLINE (NO BOX) ADJUST DEBT CONTROLS ----------
+        st.markdown('<div class="panel-title">Adjust Debt</div>', unsafe_allow_html=True)
 
+        d_cat, d_mode, d_amt, d_apply, d_reset = st.columns([3, 2, 2, 1.6, 2.2])
+
+        with d_cat:
             debt_cat = st.selectbox("Category", list(DEFAULT_DEBT_VALUES.keys()), key="debt_cat")
 
-            d1, d2 = st.columns([1, 2])
-            debt_mode = d1.selectbox("Mode", ["Add", "Minus"], key="debt_mode")
-            debt_amt = d2.number_input(
+        with d_mode:
+            debt_mode = st.selectbox("Mode", ["Add", "Minus"], key="debt_mode")
+
+        with d_amt:
+            debt_amt = st.number_input(
                 "Amount",
                 min_value=0.0,
                 max_value=100.0,
@@ -613,19 +646,25 @@ with col_panel:
                 key="debt_amt",
             )
 
-            if st.button("Apply", key="apply_debt"):
-                delta = float(debt_amt) if debt_mode == "Add" else -float(debt_amt)
-                st.session_state.debt_values[debt_cat] = max(
-                    0.0,
-                    float(st.session_state.debt_values[debt_cat]) + delta,
-                )
-                try:
-                    cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-                except Exception as e:
-                    st.error(f"Cloud save failed: {e}")
-                st.rerun()
+        with d_apply:
+            debt_apply_clicked = st.button("Apply", key="apply_debt")
 
-        if st.button("Reset Debt to defaults", key="reset_debt_bottom"):
+        with d_reset:
+            debt_reset_clicked = st.button("Reset Debt to defaults", key="reset_debt_inline")
+
+        if debt_apply_clicked:
+            delta = float(debt_amt) if debt_mode == "Add" else -float(debt_amt)
+            st.session_state.debt_values[debt_cat] = max(
+                0.0,
+                float(st.session_state.debt_values[debt_cat]) + delta,
+            )
+            try:
+                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+            except Exception as e:
+                st.error(f"Cloud save failed: {e}")
+            st.rerun()
+
+        if debt_reset_clicked:
             st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
             try:
                 cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
