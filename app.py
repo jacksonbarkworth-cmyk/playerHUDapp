@@ -1,6 +1,5 @@
 import streamlit as st
 import math
-import json
 import requests
 
 st.set_page_config(page_title="Player HUD", layout="wide")
@@ -36,7 +35,50 @@ DEFAULT_XP_VALUES = {
     "Meet Hydration target": 0.0,
 }
 
-# ---------- XP WALL DEBT DEFAULTS (SOURCE OF TRUTH) ----------
+# ---------- XP RULES ----------
+XP_PER_HOUR = {
+    "Admin Work": 0.5,
+    "Design Work": 1.0,
+    "Jiu Jitsu Training": 4.0,
+    "Gym Workout": 3.0,
+    "Italian Studying": 2.0,
+    "Italian Passive listening": 0.2,
+    "Chess - Rated Matches": 2.0,
+    "Chess - Study/ Analysis": 1.0,
+    "Reading": 1.5,
+    "New Skill Learning": 2.4,
+    "Personal Challenge Quest": 3.6,
+    "Recovery": 1.6,
+    "Creative Output": 2.0,
+    "General Life Task": 0.8,
+}
+XP_COMPLETION = {"Quest 1": 3.0, "Quest 2": 2.0, "Quest 3": 1.0}
+XP_STREAK = {
+    "Chess Streak": 1.0,
+    "Italian Streak": 1.0,
+    "Gym Streak": 1.0,
+    "Jiu Jitsu Streak": 1.0,
+    "Eating Healthy": 1.0,
+    "Meet Hydration target": 1.0,
+}
+
+
+def xp_delta_from_choice(category: str, choice: str) -> float:
+    if category in XP_PER_HOUR:
+        rate = float(XP_PER_HOUR[category])
+        if choice == "30 min":
+            return rate * 0.5
+        if choice == "1 hour":
+            return rate * 1.0
+        return 0.0
+    if category in XP_COMPLETION:
+        return float(XP_COMPLETION[category])
+    if category in XP_STREAK:
+        return float(XP_STREAK[category])
+    return 0.0
+
+
+# ---------- XP WALL DEBT DEFAULTS (SHORT NAMES, 3 WORDS MAX) ----------
 DEFAULT_DEBT_VALUES = {
     "Skip Training": 0.0,
     "Junk Eating": 0.0,
@@ -61,19 +103,126 @@ DEFAULT_DEBT_VALUES = {
     "Quest Miss": 0.0,
 }
 
+DEBT_PENALTY = {
+    "Skip Training": 2.0,
+    "Junk Eating": 2.0,
+    "Drug Use": 5.0,
+    "Blackout Drunk": 3.0,
+    "Reckless Driving": 4.0,
+    "Start Fight": 3.0,
+    "Doomscrolling": 1.5,
+    "Miss Work": 4.0,
+    "Impulsive Spend": 2.5,
+    "Malicious Deceit": 2.0,
+    "Break Oath": 6.0,
+    "All Nighter": 2.0,
+    "Avoid Duty": 2.0,
+    "Ignore Injury": 2.5,
+    "Miss Hydration": 1.0,
+    "Sleep Collapse": 2.0,
+    "Ghost Obligation": 3.5,
+    "Ego Decisions": 2.0,
+    "No Logging": 1.0,
+    "Message Pile": 1.5,
+    "Quest Miss": 3.0,
+}
+
+# ---------- STATS DEFAULTS ----------
+DEFAULT_PHYSICAL = {"PUSH": 0, "PULL": 0, "SPD": 0, "STM": 0, "DUR": 0, "BAL": 0, "FLX": 0, "RFLX": 0, "POW": 0}
+DEFAULT_MENTAL = {"LRN": 0, "LOG": 0, "MEM": 0, "STRAT": 0, "FOCUS": 0, "CREAT": 0, "AWARE": 0, "JUDG": 0, "CALM": 0}
+DEFAULT_SOCIAL = {"SOC": 0, "LEAD": 0, "NEG": 0, "COM": 0, "EMP": 0, "PRES": 0}
+DEFAULT_SKILL = {"CHESS": 0, "ITALIAN": 0, "JIUJITSU": 0}
+
+DEFAULT_STATS = {
+    "Physical": DEFAULT_PHYSICAL,
+    "Mental": DEFAULT_MENTAL,
+    "Social": DEFAULT_SOCIAL,
+    "Skill": DEFAULT_SKILL,
+}
+
 # ---------- HELPERS ----------
-def coerce_and_align(loaded: dict, defaults: dict) -> dict:
+def fmt_xp(x: float, max_decimals: int = 2) -> str:
+    try:
+        x = float(x)
+    except Exception:
+        x = 0.0
+    s = f"{x:.{max_decimals}f}".rstrip("0").rstrip(".")
+    return s if s else "0"
+
+
+def coerce_and_align_keep_meta(loaded: dict, defaults: dict) -> dict:
     """
-    Keep only the default keys, fill missing keys from defaults,
-    and coerce values to float safely.
+    Aligns to defaults, coerces to float.
+    Keeps any meta keys that start with '__' (used to persist extra data).
     """
+    loaded = loaded or {}
     out = {}
     for k, dv in defaults.items():
         try:
             out[k] = float(loaded.get(k, dv))
         except Exception:
             out[k] = float(dv)
+
+    # keep meta keys
+    for k, v in loaded.items():
+        if isinstance(k, str) and k.startswith("__"):
+            out[k] = v
     return out
+
+
+def coerce_int_dict(loaded: dict, defaults: dict) -> dict:
+    loaded = loaded or {}
+    out = {}
+    for k, dv in defaults.items():
+        try:
+            out[k] = int(loaded.get(k, dv))
+        except Exception:
+            out[k] = int(dv)
+        out[k] = max(0, min(100, out[k]))
+    return out
+
+
+def apply_xp_with_debt_payment(xp_gain: float) -> float:
+    """
+    Pays down XP Wall Debt first using earned XP.
+    Returns leftover XP after debt is reduced.
+    Reduces debt proportionally across categories.
+    """
+    xp_gain = float(max(0.0, xp_gain))
+    if xp_gain <= 0:
+        return 0.0
+
+    total_debt = float(sum(st.session_state.debt_values.values()))
+    if total_debt <= 0:
+        return xp_gain
+
+    pay = min(xp_gain, total_debt)
+    remaining_pay = pay
+
+    # proportional reduction
+    for k, v in list(st.session_state.debt_values.items()):
+        v = float(v)
+        if v <= 0 or remaining_pay <= 0:
+            continue
+        share = (v / total_debt) * pay
+        reduction = min(v, share)
+        st.session_state.debt_values[k] = float(max(0.0, v - reduction))
+        remaining_pay -= reduction
+
+    # cleanup
+    if remaining_pay > 1e-6:
+        for k, v in list(st.session_state.debt_values.items()):
+            if remaining_pay <= 0:
+                break
+            v = float(v)
+            if v <= 0:
+                continue
+            reduction = min(v, remaining_pay)
+            st.session_state.debt_values[k] = float(max(0.0, v - reduction))
+            remaining_pay -= reduction
+
+    return float(xp_gain - pay)
+
 
 # ---------- CLOUD SAVE (SUPABASE) ----------
 CLOUD_ENABLED = (
@@ -111,6 +260,19 @@ if CLOUD_ENABLED:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
         if r.status_code >= 400:
             raise RuntimeError(f"Supabase save failed ({r.status_code}): {r.text}")
+
+    def cloud_append_log(event_type: str, payload: dict, snapshot=None):
+        url = f"{SUPABASE_URL}/rest/v1/player_state_log"
+        row = {
+            "save_key": SAVE_KEY,
+            "event_type": event_type,
+            "payload": payload or {},
+            "snapshot": snapshot,
+        }
+        r = requests.post(url, headers=_SB_HEADERS, json=row, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase log append failed ({r.status_code}): {r.text}")
+
 else:
     def cloud_load_state():
         return None
@@ -118,8 +280,79 @@ else:
     def cloud_save_state(xp_values: dict, debt_values: dict):
         return None
 
-# ---------- CLOUD INIT (XP + DEBT) ----------
-# IMPORTANT: If cloud is down/misconfigured, app should still run with defaults.
+    def cloud_append_log(event_type: str, payload: dict, snapshot=None):
+        return None
+
+    def cloud_append_log(event_type: str, payload: dict, snapshot=None):
+        url = f"{SUPABASE_URL}/rest/v1/player_state_log"
+        row = {
+            "save_key": SAVE_KEY,
+            "event_type": event_type,
+            "payload": payload or {},
+            "snapshot": snapshot,   # optional
+        }
+        r = requests.post(url, headers=_SB_HEADERS, json=row, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase log append failed ({r.status_code}): {r.text}")
+
+def ensure_stats_in_session_from_meta():
+    meta = st.session_state.xp_values.get("__stats__", {}) if isinstance(st.session_state.xp_values, dict) else {}
+    if "stats" not in st.session_state:
+        st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+
+    # load from meta if present
+    if isinstance(meta, dict) and meta:
+        for group, defaults in DEFAULT_STATS.items():
+            loaded_group = meta.get(group, {})
+            st.session_state.stats[group] = coerce_int_dict(loaded_group, defaults)
+
+
+def write_stats_to_meta_before_save():
+    # store stats inside xp_values meta to persist without changing DB schema
+    if "stats" not in st.session_state:
+        return
+    st.session_state.xp_values["__stats__"] = {
+        "Physical": st.session_state.stats.get("Physical", {}).copy(),
+        "Mental": st.session_state.stats.get("Mental", {}).copy(),
+        "Social": st.session_state.stats.get("Social", {}).copy(),
+        "Skill": st.session_state.stats.get("Skill", {}).copy(),
+    }
+
+def save_all(event_type: str | None = None, payload: dict | None = None, include_snapshot: bool = False):
+    write_stats_to_meta_before_save()
+
+    # 1) append audit log first (so even if save fails, you know it was attempted)
+    if CLOUD_ENABLED and event_type:
+        snap = None
+        if include_snapshot:
+            snap = {
+                "xp_values": st.session_state.xp_values,
+                "debt_values": st.session_state.debt_values,
+            }
+        try:
+            cloud_append_log(event_type, payload or {}, snapshot=snap)
+        except Exception as e:
+            st.error(f"Cloud log failed: {e}")
+
+    # 2) save current snapshot
+    try:
+        cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+    except Exception as e:
+        st.error(f"Cloud save failed: {e}")
+
+def reset_all():
+    st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
+    st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
+    st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+    save_all(
+        event_type="reset",
+        payload={"reason": "user_clicked_reset_all"},
+        include_snapshot=True,  # reset is a good time to snapshot
+    )
+    st.rerun()
+
+
+# ---------- CLOUD INIT ----------
 if "xp_values" not in st.session_state or "debt_values" not in st.session_state:
     try:
         loaded = cloud_load_state()
@@ -130,19 +363,21 @@ if "xp_values" not in st.session_state or "debt_values" not in st.session_state:
     if loaded is None:
         st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
         st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
-        # Try seeding cloud, but don't crash if it fails
-        try:
-            cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-        except Exception as e:
-            st.warning(f"Could not seed cloud save.\n\nDetails: {e}")
+        st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+        save_all()
     else:
         xp_loaded, debt_loaded = loaded
-        st.session_state.xp_values = coerce_and_align(xp_loaded, DEFAULT_XP_VALUES)
-        st.session_state.debt_values = coerce_and_align(debt_loaded, DEFAULT_DEBT_VALUES)
+        st.session_state.xp_values = coerce_and_align_keep_meta(xp_loaded, DEFAULT_XP_VALUES)
+        st.session_state.debt_values = coerce_and_align_keep_meta(debt_loaded, DEFAULT_DEBT_VALUES)
+        ensure_stats_in_session_from_meta()
+
+# Always align (prevents KeyError if old cloud state exists)
+st.session_state.xp_values = coerce_and_align_keep_meta(st.session_state.get("xp_values", {}), DEFAULT_XP_VALUES)
+st.session_state.debt_values = coerce_and_align_keep_meta(st.session_state.get("debt_values", {}), DEFAULT_DEBT_VALUES)
+ensure_stats_in_session_from_meta()
 
 # ---------- BACKGROUND RULES: LEVEL + TITLE SYSTEM ----------
 MAX_LEVEL = 100
-
 TITLE_RANGES = [
     ("Novice", 1, 5),
     ("Trainee", 6, 10),
@@ -170,13 +405,13 @@ def level_requirement(level: int) -> float:
     return float(level * 10)
 
 def title_for_level(level: int) -> str:
-    for title, lo, hi in TITLE_RANGES:
+    for t, lo, hi in TITLE_RANGES:
         if lo <= level <= hi:
-            return title
+            return t
     return "Unranked"
 
 def title_next_threshold(level: int) -> int:
-    for _title, lo, hi in TITLE_RANGES:
+    for _t, lo, hi in TITLE_RANGES:
         if lo <= level <= hi:
             next_level = hi + 1
             return next_level if next_level <= TITLE_RANGES[-1][2] else hi
@@ -184,10 +419,8 @@ def title_next_threshold(level: int) -> int:
 
 def compute_level(total_xp: float, max_level: int = MAX_LEVEL) -> tuple[int, float, float]:
     total_xp_int = max(0, int(math.floor(total_xp)))
-
     level = 1
     remaining = float(total_xp_int)
-
     while level < max_level:
         req = level_requirement(level)
         if remaining >= req:
@@ -195,10 +428,10 @@ def compute_level(total_xp: float, max_level: int = MAX_LEVEL) -> tuple[int, flo
             level += 1
         else:
             break
-
     req = level_requirement(level)
     xp_in_level = remaining
     return level, xp_in_level, req
+
 
 # ---------- GLOBAL STYLES ----------
 st.markdown(
@@ -223,7 +456,6 @@ st.markdown(
         padding-bottom: 22px !important;
         padding-left: 10px !important;
         padding-right: 10px !important;
-
         margin: 0 auto !important;
     }
 
@@ -340,6 +572,17 @@ st.markdown(
         text-shadow: 0 0 14px rgba(0,220,255,0.7);
     }
 
+    /* Make ALL widget labels white (Category/Mode/Time/etc.) */
+    [data-testid="stWidgetLabel"] label,
+    [data-testid="stWidgetLabel"] > label,
+    label,
+    label *{
+        color: rgba(255,255,255,0.98) !important;
+        font-weight: 900 !important;
+        text-shadow: 0 0 10px rgba(0,220,255,0.45) !important;
+    }
+
+    /* Selectbox styling */
     div[data-testid="stSelectbox"] div[role="combobox"]{
         border-radius: 12px !important;
         background: rgba(0,3,20,0.55) !important;
@@ -353,11 +596,7 @@ st.markdown(
         color: #e8fbff !important;
         font-weight: 900 !important;
     }
-
-    /* ---- FORCE SELECTBOX TO BE "CLICK-ONLY" (HIDE TYPE-TO-SEARCH INPUT) ----
-       Streamlit's selectbox is implemented with an internal input. Hiding it prevents typing,
-       while still allowing clicking and selecting from the dropdown list.
-    */
+    /* click-only selectbox (hide typing) */
     div[data-testid="stSelectbox"] input{
         opacity: 0 !important;
         height: 0px !important;
@@ -370,26 +609,7 @@ st.markdown(
         box-shadow: none !important;
     }
 
-    div[data-testid="stNumberInput"] input{
-        border-radius: 12px !important;
-        background: rgba(0,3,20,0.55) !important;
-        border: 2px solid rgba(0,220,255,0.55) !important;
-        box-shadow: 0 0 18px rgba(0,220,255,0.55),
-                    inset 0 0 12px rgba(0,220,255,0.20) !important;
-        color: #e8fbff !important;
-        font-weight: 900 !important;
-        min-height: 44px !important;
-    }
-
-    [data-testid="stWidgetLabel"] label,
-    [data-testid="stWidgetLabel"] > label,
-    label,
-    label *{
-        color: rgba(255,255,255,0.98) !important;
-        font-weight: 900 !important;
-        text-shadow: 0 0 10px rgba(0,220,255,0.45) !important;
-    }
-
+    /* Buttons */
     div[data-testid="stButton"] > button{
         width: 100%;
         border-radius: 12px !important;
@@ -420,76 +640,81 @@ st.markdown(
         padding: 14px 16px !important;
     }
 
+    /* Settings expander arrow -> black + bold-ish */
+    div[data-testid="stExpander"] summary svg {
+        stroke: #000 !important;
+        stroke-width: 3px !important;
+    }
+    div[data-testid="stExpander"] summary {
+        font-weight: 950 !important;
+    }
+
     @media (max-width: 600px){
-    .hud-title{
-        font-size: 26px !important;
-        text-align: center;
-        margin-bottom: 10px;
+        .hud-title{
+            font-size: 26px !important;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .hud-box, .progress-box, .panel{
+            max-width: 100% !important;
+            padding: 10px 12px !important;
+            font-size: 13px !important;
+            border-width: 1.4px !important;
+            margin-bottom: 10px !important;
+        }
+        .panel-title{
+            font-size: 15px !important;
+            margin-bottom: 6px !important;
+        }
+        .xp-row{
+            font-size: 13px !important;
+            padding: 4px 0 !important;
+            gap: 8px !important;
+        }
+        .glow-bar{
+            height: 16px !important;
+            margin-top: 5px !important;
+        }
+        div[data-testid="stButton"] > button{
+            font-size: 12px !important;
+            padding: 6px 8px !important;
+            min-height: 34px !important;
+        }
+        div[data-testid="stSelectbox"] div[role="combobox"]{
+            font-size: 12px !important;
+            min-height: 34px !important;
+            padding: 4px 8px !important;
+        }
+        div[data-testid="stSelectbox"] ul{
+            font-size: 12px !important;
+        }
     }
-    .hud-box, .progress-box, .panel{
-        max-width: 100% !important;
-        padding: 10px 12px !important;
-        font-size: 13px !important;
-        border-width: 1.4px !important;
-        margin-bottom: 10px !important;
-    }
-    .panel-title{
-        font-size: 15px !important;
-        margin-bottom: 6px !important;
-    }
-    .xp-row{
-        font-size: 13px !important;
-        padding: 4px 0 !important;
-        gap: 8px !important;
-    }
-    .glow-bar{
-        height: 16px !important;
-        margin-top: 5px !important;
-    }
-    .glow-bar-fill, .glow-bar-fill-red{
-        transition: width 0.18s ease-out !important;
-    }
-    div[data-testid="stButton"] > button {
-    font-size: 12px !important;
-    padding: 6px 8px !important;
-    min-height: 34px !important;
-    }
-
-    div[data-testid="stSelectbox"] div[role="combobox"] {
-        font-size: 12px !important;
-        min-height: 34px !important;
-        padding: 4px 8px !important;
-    }
-
-    div[data-testid="stSelectbox"] ul {
-        font-size: 12px !important;
-    }
-
-}
-
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # ---------- XP TOTAL + LEVEL SYSTEM OUTPUT ----------
-xp_total = float(sum(st.session_state.xp_values.values()))
-debt_total = float(sum(st.session_state.debt_values.values()))
+xp_total = float(sum(st.session_state.xp_values[k] for k in DEFAULT_XP_VALUES.keys()))
+debt_total = float(sum(st.session_state.debt_values[k] for k in DEFAULT_DEBT_VALUES.keys()))
 
-level, xp_in_level_int, xp_required = compute_level(xp_total, MAX_LEVEL)
+debt_warning = (
+    ' <span style="color: rgba(255,90,90,0.95); font-weight: 950;">(Clear debt before gaining XP)</span>'
+    if debt_total > 0
+    else ""
+)
+
+effective_xp = max(0.0, xp_total - debt_total)
+
+level, _xp_in_level_int, xp_required = compute_level(effective_xp, MAX_LEVEL)
 title = title_for_level(level)
 
-# XP gain bar shows decimals
-whole_used_for_leveling = float(int(math.floor(xp_total)))
-fractional_part = float(xp_total - whole_used_for_leveling)
-xp_in_level_display = float(xp_in_level_int + fractional_part)
-
-xp_pct = 0 if xp_required <= 0 else max(0, min(100, (xp_in_level_display / xp_required) * 100))
+xp_in_level_display = xp_total  # show your total XP with decimals
+xp_pct = max(0, min(100, (xp_in_level_display / xp_required) * 100)) if xp_required > 0 else 0
 
 title_next = title_next_threshold(level)
 title_pct = 0 if title_next <= 0 else max(0, min(100, (level / title_next) * 100))
 
-# Debt bar (separate)
 DEBT_CAP = 100.0
 debt_pct = 0 if DEBT_CAP <= 0 else max(0, min(100, (debt_total / DEBT_CAP) * 100))
 
@@ -517,13 +742,13 @@ with col_hud:
         f"""
         <div class="progress-box">
           <strong>Level:</strong> {level}<br>
-          <strong>XP:</strong> {xp_total:.1f}<br>
+          <strong>XP:</strong> {fmt_xp(xp_total)}<br>
           <strong>Title:</strong> {title}<br>
 
           <div class="bar-label">XP Gain</div>
           <div class="glow-bar">
             <div class="glow-bar-fill" style="width:{xp_pct}%;"></div>
-            <div class="glow-bar-text">{xp_in_level_display:.1f}/{xp_required:.1f}</div>
+            <div class="glow-bar-text">{fmt_xp(xp_in_level_display)}/{fmt_xp(xp_required)}</div>
           </div>
 
           <div class="bar-label">Title Gain</div>
@@ -532,10 +757,10 @@ with col_hud:
             <div class="glow-bar-text">{level}/{title_next}</div>
           </div>
 
-          <div class="bar-label">XP Debt</div>
+          <div class="bar-label">XP Debt{debt_warning}</div>
           <div class="glow-bar">
             <div class="glow-bar-fill-red" style="width:{debt_pct}%;"></div>
-            <div class="glow-bar-text glow-bar-text-red">{debt_total:.1f}/{DEBT_CAP:.1f}</div>
+            <div class="glow-bar-text glow-bar-text-red">{fmt_xp(debt_total)}/{fmt_xp(DEBT_CAP)}</div>
           </div>
         </div>
         """,
@@ -570,6 +795,7 @@ with col_panel:
 
     section = st.session_state.section
 
+    # -------- XP BREAKDOWN --------
     if section == "XP Breakdown":
         xp_items = list(DEFAULT_XP_VALUES.keys())
 
@@ -577,7 +803,7 @@ with col_panel:
             f"""
             <div class="xp-row">
                 <div class="xp-name">{item}</div>
-                <div class="xp-val">{st.session_state.xp_values[item]:.1f} XP</div>
+                <div class="xp-val">{fmt_xp(st.session_state.xp_values[item])} XP</div>
             </div>
             """
             for item in xp_items
@@ -593,11 +819,11 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # ---------- INLINE (NO BOX) ADJUST XP CONTROLS ----------
+        # Inline adjust
         st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Adjust XP</div>', unsafe_allow_html=True)
 
-        c_cat, c_mode, c_amt, c_apply, c_reset = st.columns([3, 2, 2, 1.6, 2.2])
+        c_cat, c_mode, c_time, c_apply = st.columns([3, 2, 2.4, 1.6])
 
         with c_cat:
             adjust_cat = st.selectbox("Category", list(DEFAULT_XP_VALUES.keys()), key="adjust_cat")
@@ -605,52 +831,60 @@ with col_panel:
         with c_mode:
             adjust_mode = st.selectbox("Mode", ["Add", "Minus"], key="adjust_mode")
 
-        with c_amt:
-            adjust_amt = st.number_input(
-                "Amount",
-                min_value=0.0,
-                max_value=100.0,
-                value=0.2,
-                step=0.2,
-                format="%.1f",
-                key="adjust_amt",
-            )
+        with c_time:
+            if adjust_cat in XP_PER_HOUR:
+                time_choice = st.selectbox("Time", ["30 min", "1 hour"], key="xp_time_choice")
+            elif adjust_cat in XP_COMPLETION:
+                time_choice = st.selectbox("Time", ["Completion"], key="xp_time_choice")
+            elif adjust_cat in XP_STREAK:
+                time_choice = st.selectbox("Time", ["+1 (streak/day)"], key="xp_time_choice")
+            else:
+                time_choice = st.selectbox("Time", ["N/A"], key="xp_time_choice")
 
         with c_apply:
             apply_clicked = st.button("Apply", key="apply_adjust")
 
-        with c_reset:
-            reset_clicked = st.button("Reset XP to defaults", key="reset_xp_inline")
-
         if apply_clicked:
-            delta = float(adjust_amt) if adjust_mode == "Add" else -float(adjust_amt)
-            st.session_state.xp_values[adjust_cat] = max(
-                0.0,
-                float(st.session_state.xp_values[adjust_cat]) + delta,
+            base = float(xp_delta_from_choice(adjust_cat, time_choice))
+
+            leftover = None  # IMPORTANT: define this so payload always has a value
+
+            if adjust_mode == "Minus":
+                st.session_state.xp_values[adjust_cat] = max(
+                    0.0,
+                    float(st.session_state.xp_values[adjust_cat]) - base
+                )
+            else:
+                # Add: pays debt first, then adds leftover to XP
+                leftover = apply_xp_with_debt_payment(base)
+                st.session_state.xp_values[adjust_cat] = max(
+                    0.0,
+                    float(st.session_state.xp_values[adjust_cat]) + float(leftover)
+                )
+
+            save_all(
+                event_type="xp_adjust",
+                payload={
+                    "category": adjust_cat,
+                    "mode": adjust_mode,
+                    "time_choice": time_choice,
+                    "base": base,
+                    "leftover_after_debt": leftover,
+                },
+                include_snapshot=False,
             )
-            try:
-                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-            except Exception as e:
-                st.error(f"Cloud save failed: {e}")
             st.rerun()
 
-        if reset_clicked:
-            st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
-            try:
-                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-            except Exception as e:
-                st.error(f"Cloud save failed: {e}")
-            st.rerun()
 
+    # -------- XP WALL DEBT --------
     elif section == "XP wall debt":
         debt_items = list(DEFAULT_DEBT_VALUES.keys())
 
-        # ✅ Add "XP" unit here
         rows_html = "\n".join(
             f"""
             <div class="xp-row">
                 <div class="xp-name">{item}</div>
-                <div class="xp-val-debt">{st.session_state.debt_values[item]:.1f} XP</div>
+                <div class="xp-val-debt">{fmt_xp(st.session_state.debt_values[item])} XP</div>
             </div>
             """
             for item in debt_items
@@ -666,11 +900,10 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # ---------- INLINE (NO BOX) ADJUST DEBT CONTROLS ----------
         st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Adjust Debt</div>', unsafe_allow_html=True)
 
-        d_cat, d_mode, d_amt, d_apply, d_reset = st.columns([3, 2, 2, 1.6, 2.2])
+        d_cat, d_mode, d_apply = st.columns([5, 2, 1.8])
 
         with d_cat:
             debt_cat = st.selectbox("Category", list(DEFAULT_DEBT_VALUES.keys()), key="debt_cat")
@@ -678,168 +911,133 @@ with col_panel:
         with d_mode:
             debt_mode = st.selectbox("Mode", ["Add", "Minus"], key="debt_mode")
 
-        with d_amt:
-            debt_amt = st.number_input(
-                "Amount",
-                min_value=0.0,
-                max_value=100.0,
-                value=0.2,
-                step=0.2,
-                format="%.1f",
-                key="debt_amt",
-            )
-
         with d_apply:
             debt_apply_clicked = st.button("Apply", key="apply_debt")
 
-        with d_reset:
-            debt_reset_clicked = st.button("Reset Debt to defaults", key="reset_debt_inline")
-
         if debt_apply_clicked:
-            delta = float(debt_amt) if debt_mode == "Add" else -float(debt_amt)
+            base = float(DEBT_PENALTY.get(debt_cat, 0.0))
+            delta = base if debt_mode == "Add" else -base
+
             st.session_state.debt_values[debt_cat] = max(
                 0.0,
-                float(st.session_state.debt_values[debt_cat]) + delta,
+                float(st.session_state.debt_values[debt_cat]) + float(delta)
             )
-            try:
-                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-            except Exception as e:
-                st.error(f"Cloud save failed: {e}")
+
+            save_all(
+                event_type="debt_adjust",
+                payload={
+                    "category": debt_cat,
+                    "mode": debt_mode,
+                    "delta": delta,
+                    "base_penalty": base,
+                },
+                include_snapshot=False,
+            )
             st.rerun()
 
-        if debt_reset_clicked:
-            st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
-            try:
-                cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-            except Exception as e:
-                st.error(f"Cloud save failed: {e}")
-            st.rerun()
+    # -------- STATS SECTIONS (0/100 + adjust tool) --------
+    def render_stats_panel(title_text: str, group_key: str, widget_prefix: str):
+        stats_dict = st.session_state.stats.get(group_key, {}).copy()
 
-    elif section == "Physical Stats":
-        physical_rows = [
-            ("PUSH", 45),
-            ("PULL", 62),
-            ("SPD", 38),
-            ("STM", 58),
-            ("DUR", 70),
-            ("BAL", 74),
-            ("FLX", 38),
-            ("RFLX", 50),
-            ("POW", 40),
-        ]
         rows_html = "\n".join(
             f"""
             <div class="xp-row">
                 <div class="xp-name">{code}</div>
-                <div class="xp-val">{lvl}/100</div>
+                <div class="xp-val">{int(val)}/100</div>
             </div>
             """
-            for code, lvl in physical_rows
+            for code, val in stats_dict.items()
         )
+
         st.markdown(
             f"""
             <div class="panel">
-                <div class="panel-title">Physical Stats</div>
+                <div class="panel-title">{title_text}</div>
                 {rows_html}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
+        st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="panel-title">Adjust {title_text}</div>', unsafe_allow_html=True)
+
+        s_stat, s_mode, s_apply = st.columns([5, 2, 1.8])
+
+        with s_stat:
+            pick = st.selectbox("Stat", list(stats_dict.keys()), key=f"{widget_prefix}_stat")
+
+        with s_mode:
+            mode = st.selectbox("Mode", ["Add", "Minus"], key=f"{widget_prefix}_mode")
+
+        with s_apply:
+            go = st.button("Apply", key=f"{widget_prefix}_apply")
+
+        if go:
+            cur = int(st.session_state.stats[group_key].get(pick, 0))
+            cur = cur + 1 if mode == "Add" else cur - 1
+            cur = max(0, min(100, cur))
+            st.session_state.stats[group_key][pick] = int(cur)
+            save_all(
+                event_type="stat_adjust",
+                payload={
+                    "group": group_key,
+                    "stat": pick,
+                    "mode": mode,
+                    "new_value": int(cur),
+                },
+                include_snapshot=False,
+            )
+            st.rerun()
+
+    if section == "Physical Stats":
+        render_stats_panel("Physical Stats", "Physical", "phys")
     elif section == "Mental Stats":
-        mental_rows = [
-            ("LRN", 65),
-            ("LOG", 55),
-            ("MEM", 58),
-            ("STRAT", 60),
-            ("FOCUS", 54),
-            ("CREAT", 72),
-            ("AWARE", 50),
-            ("JUDG", 53),
-            ("CALM", 42),
-        ]
-        rows_html = "\n".join(
-            f"""
-            <div class="xp-row">
-                <div class="xp-name">{code}</div>
-                <div class="xp-val">{lvl}/100</div>
-            </div>
-            """
-            for code, lvl in mental_rows
-        )
-        st.markdown(
-            f"""
-            <div class="panel">
-                <div class="panel-title">Mental Stats</div>
-                {rows_html}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+        render_stats_panel("Mental Stats", "Mental", "ment")
     elif section == "Social Stats":
-        social_rows = [
-            ("SOC", 46),
-            ("LEAD", 48),
-            ("NEG", 52),
-            ("COM", 50),
-            ("EMP", 32),
-            ("PRES", 47),
-        ]
-        rows_html = "\n".join(
-            f"""
-            <div class="xp-row">
-                <div class="xp-name">{code}</div>
-                <div class="xp-val">{lvl}/100</div>
-            </div>
-            """
-            for code, lvl in social_rows
-        )
+        render_stats_panel("Social Stats", "Social", "soc")
+    elif section == "Skill Stats":
+        render_stats_panel("Skill Stats", "Skill", "skill")
+
+    # -------- Tools / Rule Book --------
+    elif section == "Tools":
         st.markdown(
-            f"""
+            """
             <div class="panel">
-                <div class="panel-title">Social Stats</div>
-                {rows_html}
+              <div class="panel-title">Tools</div>
+              <div style="opacity:0.85; font-weight:800;">
+                (Coming soon)
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    elif section == "Skill Stats":
-        skill_rows = [
-            ("CHESS", 68),
-            ("ITALIAN", 12),
-            ("JIUJITSU", 22),
-        ]
-        rows_html = "\n".join(
-            f"""
-            <div class="xp-row">
-                <div class="xp-name">{code}</div>
-                <div class="xp-val">{lvl}/100</div>
-            </div>
-            """
-            for code, lvl in skill_rows
-        )
+    elif section == "Rule Book":
         st.markdown(
-            f"""
+            """
             <div class="panel">
-                <div class="panel-title">Skill Stats</div>
-                {rows_html}
+              <div class="panel-title">Rule Book</div>
+              <div style="opacity:0.85; font-weight:800; line-height:1.6;">
+                XP Wall Debt is a discipline penalty system that creates a temporary progress barrier.<br><br>
+                When you make a poor decision in a day, you generate debt. This debt becomes a wall that blocks new XP
+                from turning into real progression until it’s paid off.<br><br>
+                Positive XP you earn the next day doesn’t stack immediately — it pays the debt first. Only whatever is
+                left after clearing the wall becomes actual progress.
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     else:
-        st.markdown(
-            f"""
-            <div class="panel">
-              <div class="panel-title">{section}</div>
-              <div style="opacity:0.85; font-weight:700;">
-                Select a section from the Menu dropdown above.
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        # You demanded those annoying “Select a section…” boxes removed.
+        pass
+
+    # -------- SETTINGS AT THE BOTTOM (INSIDE RIGHT COLUMN) --------
+    st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
+    with st.expander("⚙️ Settings", expanded=False):
+        if st.button("Reset ALL", key="reset_all_btn_bottom"):
+            reset_all()
+
 
