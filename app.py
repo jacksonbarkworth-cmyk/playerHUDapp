@@ -741,15 +741,31 @@ debt_warning = (
     else ""
 )
 
+# RULE: progression uses effective XP
 effective_xp = max(0.0, xp_total - debt_total)
 
-level, xp_in_level, xp_required = compute_level(effective_xp, MAX_LEVEL)
+# Level + title are based on effective XP (rule)
+level, _xp_in_level_effective, _xp_required_effective = compute_level(effective_xp, MAX_LEVEL)
 title = title_for_level(level)
 
-# Progress to NEXT level should be based on XP inside the current level
-xp_in_level_display = float(xp_in_level)
-xp_pct = 0.0 if xp_required <= 0 else max(0.0, min(100.0, (xp_in_level_display / xp_required) * 100.0))
+# Raw level (for UI bars that should NOT move when debt changes)
+level_raw, _xp_in_level_raw_for_title, _xp_required_raw_for_title = compute_level(xp_total, MAX_LEVEL)
 
+# Title bar should use raw level so debt can't move it
+title_next_raw = title_next_threshold(level_raw)
+title_pct = 0 if title_next_raw <= 0 else max(0, min(100, (level_raw / title_next_raw) * 100))
+
+# XP Gain bar should NOT be affected by debt (your UI requirement)
+# So compute the bar from RAW XP instead.
+_level_raw, xp_in_level_raw, xp_required_raw = compute_level(xp_total, MAX_LEVEL)
+
+xp_in_level_display = float(xp_in_level_raw)
+xp_required_display = float(xp_required_raw)
+xp_pct = 0.0 if xp_required_display <= 0 else max(
+    0.0, min(100.0, (xp_in_level_display / xp_required_display) * 100.0)
+)
+
+# Title gain remains tied to effective level (fine)
 title_next = title_next_threshold(level)
 title_pct = 0 if title_next <= 0 else max(0, min(100, (level / title_next) * 100))
 
@@ -786,13 +802,13 @@ with col_hud:
           <div class="bar-label">XP Gain</div>
           <div class="glow-bar">
             <div class="glow-bar-fill" style="width:{xp_pct}%;"></div>
-            <div class="glow-bar-text">{fmt_xp(xp_in_level_display)}/{fmt_xp(xp_required)}</div>
+            <div class="glow-bar-text">{fmt_xp(xp_in_level_display)}/{fmt_xp(xp_required_display)}</div>
           </div>
 
           <div class="bar-label">Title Gain</div>
           <div class="glow-bar">
             <div class="glow-bar-fill" style="width:{title_pct}%;"></div>
-            <div class="glow-bar-text">{level}/{title_next}</div>
+            <div class="glow-bar-text">{level_raw}/{title_next_raw}</div>
           </div>
 
           <div class="bar-label">XP Debt{debt_warning}</div>
@@ -1271,7 +1287,6 @@ with col_panel:
 with st.expander("⚙️ Settings", expanded=False):
     if st.button("Reset ALL", key="reset_all_btn_bottom"):
         reset_all()
-
 
 
 
