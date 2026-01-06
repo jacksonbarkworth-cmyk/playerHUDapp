@@ -1,6 +1,7 @@
 import streamlit as st
 import math
 import requests
+import textwrap
 
 st.set_page_config(page_title="Player HUD", layout="wide")
 
@@ -1014,30 +1015,199 @@ with col_panel:
         )
 
     elif section == "Rule Book":
-        st.markdown(
-            """
-            <div class="panel">
-              <div class="panel-title">Rule Book</div>
-              <div style="opacity:0.85; font-weight:800; line-height:1.6;">
-                XP Wall Debt is a discipline penalty system that creates a temporary progress barrier.<br><br>
-                When you make a poor decision in a day, you generate debt. This debt becomes a wall that blocks new XP
-                from turning into real progression until it’s paid off.<br><br>
-                Positive XP you earn the next day doesn’t stack immediately — it pays the debt first. Only whatever is
-                left after clearing the wall becomes actual progress.
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        rulebook_text = """
+    **Core Rule** XP makes progress. XP Wall Debt blocks progress. When XP is earned while debt exists, earned XP pays down debt first. Only remaining XP becomes real gain.
+        
+    #### 1) What This System Tracks
+    - XP: earned progress currency
+    - XP Wall Debt: penalty currency that blocks progression
+    - Level: calculated from Effective XP
+    - Title: unlocked by reaching level ranges
+    - Stats: manually assigned attributes from 0–100
+
+    ---
+
+    #### 2) XP & Debt Interaction
+    - Effective XP = max(0, Total XP − Total Debt)
+    - If debt exists, newly earned XP reduces debt first
+    - Only leftover XP contributes to progression
+    - Level-up requirement formula = Level × 10 XP
+    - Level value is always floored to an integer
+
+    ---
+
+    #### 3) Titles by Level Range
+    - Novice → Levels 1–5
+    - Trainee → Levels 6–10
+    - Adept → Levels 11–15
+    - Knight → Levels 16–20
+    - Champion → Levels 21–25
+    - Elite → Levels 26–30
+    - Legend → Levels 31–35
+    - Mythic → Levels 36–40
+    - Master → Levels 41–45
+    - Grandmaster → Levels 46–50
+    - Ascendant → Levels 51–55
+    - Exemplar → Levels 56–60
+    - Paragon → Levels 61–65
+    - Titan → Levels 66–70
+    - Sovereign → Levels 71–75
+    - Immortal-Seed → Levels 76–80
+    - Immortal → Levels 81–85
+    - Eternal-Seed → Levels 86–90
+    - Eternal → Levels 91–95
+    - World-Class → Levels 96–100
+
+    ---
+
+    #### 4) Coin Economy (Design Only)
+    - £1 = 1 Coin
+    - £180 = 180 Coins
+    - £600/week = 600 Coins/week
+    - A coin balance does not exist unless implemented
+
+    ---
+
+    #### 5) XP Earnable Actions
+    - Admin work → 0.5 XP per hour
+    - Design work → 1 XP per hour
+    - Gym training → 3 XP per hour
+    - BJJ training → 4 XP per hour
+    - Italian studying → 2 XP per hour
+    - Italian passive listening → 0.2 XP per hour
+    - Chess rated play → 2 XP per hour
+    - Chess analysis/study → 1 XP per hour
+    - Reading → 1.5 XP per hour
+    - New skill learning → 2.4 XP per hour
+    - Personal challenge quest → 3.6 XP per hour
+    - Recovery protocols → 1.6 XP per hour
+    - Creative output → 2 XP per hour
+    - Quest completion → 1–3 XP based on difficulty
+    - Maintained streak habit → +1 XP daily
+
+    ---
+
+    #### 6) Daily Quest Structure
+    - Quest 1 → Physical progress (training or conditioning)
+    - Quest 2 → Mental or skill progress (study or strategy)
+    - Quest 3 → Life or responsibility progress (real challenge or output)
+    - Daily quests grant XP on top of normal XP earning
+    - Quests must represent real effort or they are invalid
+
+    ---
+
+    #### 7) Oath Penalty Rules
+    Breaking any oath results in 6 XP Wall Debt:
+    - No cheating
+    - No betrayal of trust
+    - No stealing
+    - No harm to the defenseless
+    - No malicious manipulation/exploitation
+    - Honor commitments or renegotiate transparently
+    - Compete with integrity
+    - Own your actions (accountability)
+    - No sabotaging others for self-gain
+    - Oaths do not stack unless expanded into multiple debt categories
+
+    ---
+
+    #### 8) XP Wall Debt Penalties
+    - Skip scheduled training → 2 XP debt
+    - Junk-heavy eating / off-plan diet → 2 XP debt
+    - Drug consumption → 5 XP debt
+    - Blackout drunk → 3 XP debt
+    - Reckless driving → 4 XP debt
+    - Fighting outside training → 3 XP debt
+    - Doomscrolling past 1 hour → 1.5 XP debt
+    - Miss work hours without notice → 4 XP debt
+    - Unnecessary impulse spend £50+ → 2.5 XP debt
+    - Deceit for harmful advantage → 2 XP debt
+    - All-nighter harming recovery → 2 XP debt
+    - Avoid responsibilities a full day → 2 XP debt
+    - Train while clearly injured → 2.5 XP debt
+    - Miss hydration target → 1 XP debt
+    - Weekly sleep average < 6 hours → 2 XP debt
+    - Ghost obligation → 3.5 XP debt
+    - Ignore feedback / ego decisions → 2 XP debt
+    - Fail to log daily progress → 1 XP debt
+    - Messages unanswered 48+ hours → 1.5 XP debt
+    - Miss 2+ quest categories in one day → 3 XP debt
+    - Break personal oath → 6 XP debt
+
+    ---
+
+    #### 9) Stats Interpretation Scale (Design Meaning)
+    - −100 → extreme impairment
+    - −50 → far below average adult
+    - −40 to −10 → below-average adult band
+    - 0 → average untrained adult baseline
+    - +50 → trained competitive amateur
+    - +65 → advanced regional amateur
+    - +80 → national competitor
+    - +95 → elite international
+    - 100 → best verified human performance
+    - Negative stats are not active unless the code is modified to support them
+
+    ---
+
+    #### 10) Stats Measurement Rules
+    Physical:
+    - PUSH → max push-ups (avg 25)
+    - PULL → max pull-ups (avg 2)
+    - SPD → 100m sprint (avg 16.5s)
+    - STM → 5km run (avg 35 min)
+    - DUR → recovery benchmark
+    - BAL → single-leg stand (avg 45s)
+    - FLX → sit-and-reach (avg 30cm)
+    - RFLX → reaction test (avg 230ms)
+    - POW → force/power benchmark
+
+    Mental:
+    - LRN → recall after short structured study
+    - LOG → logic question benchmark
+    - MEM → digit/list recall benchmark
+    - STRAT → planning depth benchmark
+    - FOCUS → continuous attention benchmark
+    - CREAT → originality benchmark
+    - AWARE → observation benchmark
+    - JUDG → scenario decision scoring
+    - CALM → heart-rate + accuracy under stress
+
+    Social:
+    - SOC → social initiation benchmark
+    - LEAD → group responsibility benchmark
+    - NEG → persuasion/negotiation benchmark
+    - COM → explanation clarity benchmark
+    - EMP → emotion recognition benchmark
+    - PRES → posture & body language audit
+
+    Skills:
+    - CHESS → 10 rated games benchmark
+    - ITALIAN → A1 language benchmark
+    - JIU-JITSU → belt or coached evaluation benchmark
+
+    ---
+
+    #### 11) System Constraints
+    - Stats are clamped to 0–100
+    - Coins are not implemented
+    - Levels are floored integers
+    - Rulebook does not activate mechanics without real logic implemented
+    """
+
+        # Render rulebook text
+        st.markdown(textwrap.dedent(rulebook_text).strip())
+
+        # Invisible spacing below panel (optional)
+        st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
+
+        # Settings UI stays outside the rulebook text
+        with st.expander("⚙️ Settings", expanded=False):
+            if st.button("Reset ALL", key="reset_all_btn_bottom"):
+                reset_all()
 
     else:
-        # You demanded those annoying “Select a section…” boxes removed.
         pass
 
-    # -------- SETTINGS AT THE BOTTOM (INSIDE RIGHT COLUMN) --------
-    st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
-    with st.expander("⚙️ Settings", expanded=False):
-        if st.button("Reset ALL", key="reset_all_btn_bottom"):
-            reset_all()
 
 
