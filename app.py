@@ -1893,6 +1893,7 @@ with col_panel:
         )
 
     elif section == "Rule Book":
+        # OPEN panel + wrap
         st.markdown(
             """
             <div class="panel">
@@ -1902,7 +1903,7 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # --- Core Rule (boxed) ---
+        # Core Rule box
         st.markdown(
             """
             <div class="rulebox core">
@@ -1917,11 +1918,9 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # --- Boxed sections (title + markdown body) ---
+        # IMPORTANT: sections must be defined BEFORE the loop
         sections = [
-            (
-                "1) What This System Tracks (Actual)",
-                """
+            ("1) What This System Tracks (Actual)", """
     - **XP (by category)**: your stored XP totals (can include decimals)
     - **XP Wall Debt (by category)**: your stored debt totals (can include decimals)
     - **Effective XP** = max(0, Total XP − Total Debt)
@@ -1929,32 +1928,23 @@ with col_panel:
     - **XP Gain bar (UI)**: computed from **Raw Total XP** (NOT affected by debt)
     - **Title Gain bar (UI)**: computed from **Raw Total XP** via the raw level (NOT affected by debt)
     - **Stats**: manual attributes clamped 0–100
-    """,
-            ),
-            (
-                "2) XP & Debt Interaction (Actual Logic)",
-                """
+    """),
+            ("2) XP & Debt Interaction (Actual Logic)", """
     - **Effective XP = max(0, Total XP − Total Debt)**
     - If **Total Debt > 0** and you **Add XP**, the system runs debt payoff first:
     - It pays down debt **proportionally across ALL debt categories** based on each category’s share of total debt at the moment of payment.
     - If tiny rounding remainder exists, a cleanup pass finishes paying down remaining debt until the payment amount is fully applied.
     - Only the **leftover XP after debt payment** is added to your chosen XP category.
     - If you **Minus XP**, it only reduces that XP category (never increases debt).
-    """,
-            ),
-            (
-                "3) Level System (Actual Logic)",
-                """
-    - Level is computed using **floored integer XP**:
-    - The system uses `int(math.floor(xp))` before calculating levels (decimals do not count for level calculation).
-    - Requirement to go from Level **L** to **L+1** is **L × 10 XP**
+    """),
+            ("3) Level System (Actual Logic)", """
+    - Level is computed using **floored integer XP**.
+    - The system uses `int(math.floor(xp))` before calculating levels (decimals do not count).
+    - Requirement to go from Level **L** to **L+1** is **L × 10 XP**.
     - Starting at Level 1, the system repeatedly subtracts the current requirement until it can’t.
     - The leftover is your **XP inside the current level**.
-    """,
-            ),
-            (
-                "4) Titles by Level Range (Used for Displayed Title)",
-                """
+    """),
+            ("4) Titles by Level Range (Used for Displayed Title)", """
     - Novice → Levels 1–5
     - Trainee → Levels 6–10
     - Adept → Levels 11–15
@@ -1975,25 +1965,13 @@ with col_panel:
     - Eternal-Seed → Levels 86–90
     - Eternal → Levels 91–95
     - World-Class → Levels 96–100
-    """,
-            ),
-            (
-                "5) What the 3 Bars Mean (Important UI Rules)",
-                """
-    - **XP Gain bar**
-    - Shows progress inside your current level computed from **Raw Total XP**.
-    - **Debt does NOT move this bar.**
-    - **Title Gain bar**
-    - Shows progress toward the next title threshold using the **Raw Level** derived from **Raw Total XP**.
-    - **Debt does NOT move this bar.**
-    - **XP Debt bar**
-    - Shows Total Debt relative to **DEBT_CAP = 100**.
-    - This is display only; it does not change the other bars.
-    """,
-            ),
-            (
-                "6) XP Earnable Actions (Rates Used by the XP Adjust Tool)",
-                """
+    """),
+            ("5) What the 3 Bars Mean (Important UI Rules)", """
+    - **XP Gain bar**: progress inside current level computed from **Raw Total XP** (debt does NOT move this bar).
+    - **Title Gain bar**: progress toward next title threshold using **Raw Level** derived from **Raw Total XP** (debt does NOT move this bar).
+    - **XP Debt bar**: shows Total Debt relative to **DEBT_CAP = 100** (display only).
+    """),
+            ("6) XP Earnable Actions (Rates Used by the XP Adjust Tool)", """
     **Per-hour categories:**
     - Admin Work → 0.5 XP per hour
     - Design Work → 1.0 XP per hour
@@ -2022,11 +2000,8 @@ with col_panel:
     - Jiu Jitsu Streak → +1.0 XP
     - Eating Healthy → +1.0 XP
     - Meet Hydration target → +1.0 XP
-    """,
-            ),
-            (
-                "7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)",
-                """
+    """),
+            ("7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)", """
     **Normal debt categories (each Add applies the listed amount):**
     - Skip Training → 2.0 XP debt
     - Junk Eating → 2.0 XP debt
@@ -2061,29 +2036,20 @@ with col_panel:
     - Oath: Accountability
     - Oath: No Sabotage Others
 
-    **Important:** The system currently allows both **Break Oath** and individual **Oath: ...** categories to be used. Avoid double-penalizing unless you intentionally want that.
-    """,
-            ),
-            (
-                "8) Stats (Actual Rules)",
-                """
+    **Important:** The system allows both **Break Oath** and individual **Oath: ...** categories. Don’t double-penalize unless intentional.
+    """),
+            ("8) Stats (Actual Rules)", """
     - Stats are stored under: Physical, Mental, Social, Skill.
     - Stats are clamped to **0–100**.
     - The Adjust Stats tool changes values by **±1** per click.
-    """,
-            ),
-            (
-                "9) Coin Economy (Design Only)",
-                """
+    """),
+            ("9) Coin Economy (Design Only)", """
     - £1 = 1 Coin
     - £180 = 180 Coins
     - £600/week = 600 Coins/week
     - Coins are **not implemented** in the current code.
-    """,
-            ),
-            (
-                "10) Stats Meaning Scale (Design Lore)",
-                """
+    """),
+            ("10) Stats Meaning Scale (Design Lore)", """
     - **-100** → extreme impairment / minimal motor-cognitive function
     - **-50** → far below average adult
     - **-40 to -10** → below-average adult variation band
@@ -2093,12 +2059,9 @@ with col_panel:
     - **+80** → national competitor
     - **+95** → elite international competitor
     - **100** → best verified human performance
-    - Negative stats are **not active in code** unless range is expanded
-    """,
-            ),
-            (
-                "11) How to Measure Stats (Reference Benchmarks)",
-                """
+    - Negative stats are **not active** unless you expand the range
+    """),
+            ("11) How to Measure Stats (Reference Benchmarks)", """
     **Physical**
     - **PUSH** → Max push-up test *(avg 25 reps)*
     - **PULL** → Max pull-up test *(avg 2 reps)*
@@ -2133,35 +2096,30 @@ with col_panel:
     - **CHESS** → Rated match benchmark *(e.g., 10-game rating avg)*
     - **ITALIAN** → A1 assessment benchmark *(reading/speaking/comprehension)*
     - **JIU-JITSU** → Belt rank or coached evaluation
-    """,
-            ),
-            (
-                "12) System Constraints (Mechanics Do Not Auto-Trigger)",
-                """
+    """),
+            ("12) System Constraints (Mechanics Do Not Auto-Trigger)", """
     - Stats are clamped to **0..100**
     - Coins are **not implemented**
     - Levels use **floored integer XP**
     - Rulebook text does **not activate mechanics** without implemented logic
-    """,
-            ),
+    """),
         ]
 
-    for title_text, body_md in sections:
-        body_html = rule_md_to_html(body_md)
+        # Render each section as a separate box
+        for title_text, body_md in sections:
+            body_html = rule_md_to_html(body_md)
+            st.markdown(
+                f"""
+                <div class="rulebox">
+                <div class="rulebox-title">{html.escape(title_text)}</div>
+                <div class="rulebox-body">{body_html}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-        st.markdown(
-            f"""
-            <div class="rulebox">
-            <div class="rulebox-title">{html.escape(title_text)}</div>
-            <div class="rulebox-body">
-                {body_html}
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("</div></div>", unsafe_allow_html=True)  # closes rulebook-wrap and panel
+        # CLOSE wrap + panel (this goes LAST, still inside the Rule Book branch)
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
 # ---------- SETTINGS ----------
 with st.expander("⚙️ Settings", expanded=False):
@@ -2197,4 +2155,4 @@ with st.expander("⚙️ Settings", expanded=False):
     with c6:
         if st.button("Reset Skill Stats", key="reset_skill_btn"):
             reset_stats_group("Skill")
-
+            
