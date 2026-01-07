@@ -3,6 +3,7 @@ import math
 import requests
 import textwrap
 import html
+import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -442,6 +443,69 @@ def apply_xp_with_debt_payment(xp_gain: float) -> float:
 
     return float(xp_gain - pay)
 
+def rule_md_to_html(md: str) -> str:
+    """
+    Minimal markdown -> HTML for this rulebook:
+    - bullet lines starting with "- " become <ul><li>...</li></ul>
+    - **bold** -> <strong>
+    - `code` -> <code>
+    - lines like "**Physical**" become a subtitle
+    """
+    md = textwrap.dedent(md or "").strip("\n")
+    lines = md.splitlines()
+
+    def inline_fmt(s: str) -> str:
+        s = html.escape(s)
+
+        # **bold**
+        s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+
+        # `code`
+        s = re.sub(r"`(.+?)`", r"<code>\1</code>", s)
+
+        return s
+
+    out = []
+    in_ul = False
+
+    for raw in lines:
+        line = raw.rstrip()
+
+        if not line.strip():
+            if in_ul:
+                out.append("</ul>")
+                in_ul = False
+            out.append('<div class="rb-spacer"></div>')
+            continue
+
+        # Subtitle: **Physical**
+        sub = re.fullmatch(r"\*\*(.+?)\*\*", line.strip())
+        if sub:
+            if in_ul:
+                out.append("</ul>")
+                in_ul = False
+            out.append(f'<div class="rulebox-subtitle">{inline_fmt(sub.group(1))}</div>')
+            continue
+
+        # Bullet
+        if line.lstrip().startswith("- "):
+            if not in_ul:
+                out.append("<ul>")
+                in_ul = True
+            item = line.lstrip()[2:]
+            out.append(f"<li>{inline_fmt(item)}</li>")
+            continue
+
+        # Normal paragraph line
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+        out.append(f"<div>{inline_fmt(line)}</div>")
+
+    if in_ul:
+        out.append("</ul>")
+
+    return "\n".join(out)
 
 # ---------- BACKGROUND RULES: LEVEL + TITLE SYSTEM ----------
 MAX_LEVEL = 100
@@ -1091,6 +1155,157 @@ st.markdown(
         line-height: 1.3;
     }
 
+    /* ---------- RULEBOOK STYLING ---------- */
+    .rulebook{
+        opacity: 0.92;
+        font-weight: 750;
+        line-height: 1.65;
+        font-size: 14px;
+    }
+
+    .rulebook h4{
+        margin: 14px 0 8px 0;
+        font-size: 15px;
+        font-weight: 950;
+        letter-spacing: 0.4px;
+        color: rgba(180,255,255,0.95);
+        text-shadow: 0 0 12px rgba(0,220,255,0.35);
+    }
+
+    .rulebook strong{
+        color: rgba(255,255,255,0.97);
+        font-weight: 950;
+    }
+
+    .rulebook ul{
+        margin: 6px 0 10px 18px;
+        padding: 0;
+    }
+    .rulebook li{
+        margin: 4px 0;
+    }
+
+    .rulebook hr{
+        border: none;
+        height: 1px;
+        margin: 12px 0;
+        background: linear-gradient(90deg, rgba(0,220,255,0.00), rgba(0,220,255,0.35), rgba(0,220,255,0.00));
+    }
+
+    .rulebook-core{
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(0,220,255,0.35);
+        background: rgba(0,3,20,0.45);
+        box-shadow: inset 0 0 14px rgba(0,220,255,0.10);
+        margin-bottom: 12px;
+    }
+    .rulebook-core-title{
+        font-weight: 950;
+        letter-spacing: 0.6px;
+        color: rgba(255,255,255,0.98);
+        text-shadow: 0 0 12px rgba(0,220,255,0.35);
+        margin-bottom: 8px;
+    }
+    .rulebook-core-line{
+        font-weight: 850;
+        opacity: 0.92;
+        margin: 4px 0;
+    }
+
+    /* ---------- RULEBOOK BOXES ---------- */
+    .rulebook-wrap{
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .rulebox{
+        border-radius: 14px;
+        background: rgba(0,3,20,0.52);
+        border: 1px solid rgba(0,220,255,0.28);
+        box-shadow: 0 0 18px rgba(0,220,255,0.22), inset 0 0 14px rgba(0,220,255,0.08);
+        padding: 14px 14px;
+    }
+
+    .rulebox-title{
+        font-weight: 950;
+        font-size: 16px;
+        letter-spacing: 0.4px;
+        color: rgba(180,255,255,0.95);
+        text-shadow: 0 0 12px rgba(0,220,255,0.35);
+        margin-bottom: 8px;
+    }
+
+    .rulebox-body{
+        opacity: 0.92;
+        font-weight: 750;
+        line-height: 1.65;
+        font-size: 14px;
+    }
+
+    /* style lists inside the boxes */
+    .rulebox-body ul{
+        margin: 6px 0 0 18px;
+        padding: 0;
+    }
+    .rulebox-body li{
+        margin: 4px 0;
+    }
+    .rulebox-body strong{
+        color: rgba(255,255,255,0.97);
+        font-weight: 950;
+    }
+
+    /* keep the Core Rule callout slightly different */
+    .rulebox.core{
+        border: 1px solid rgba(0,220,255,0.40);
+        background: rgba(0,3,20,0.60);
+    }
+    .rulebox.core .rulebox-title{
+        color: rgba(255,255,255,0.98);
+    }
+
+    /* Rulebook body typography inside boxes */
+    .rulebox-body{
+        opacity: 0.92;
+        font-weight: 750;
+        line-height: 1.65;
+        font-size: 14px;
+    }
+
+    /* lists */
+    .rulebox-body ul{
+        margin: 8px 0 0 18px;
+        padding: 0;
+    }
+    .rulebox-body li{
+        margin: 5px 0;
+    }
+
+    /* subtitles like "Physical", "Mental" */
+    .rulebox-subtitle{
+        margin-top: 10px;
+        font-weight: 950;
+        font-size: 14px;
+        letter-spacing: 0.35px;
+        color: rgba(255,255,255,0.96);
+        text-shadow: 0 0 10px rgba(0,220,255,0.25);
+    }
+
+    /* code ticks */
+    .rulebox-body code{
+        padding: 1px 6px;
+        border-radius: 8px;
+        border: 1px solid rgba(0,220,255,0.25);
+        background: rgba(0,3,20,0.55);
+        color: rgba(180,255,255,0.95);
+        font-weight: 900;
+    }
+
+    /* mild spacer for paragraph breaks */
+    .rb-spacer{ height: 8px; }
+
     @media (max-width: 600px){
         .hud-title{
             margin-top: 0px;
@@ -1678,216 +1893,275 @@ with col_panel:
         )
 
     elif section == "Rule Book":
-        st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
-        rulebook_text = """**Core Rule**
-- XP is progress currency.
-- XP Wall Debt blocks progression.
-- When XP is earned while debt exists, earned XP pays down debt first. Only leftover XP becomes real XP gain in the selected category.
+        st.markdown(
+            """
+            <div class="panel">
+            <div class="panel-title">Rule Book</div>
+            <div class="rulebook-wrap">
+            """,
+            unsafe_allow_html=True,
+        )
 
----
-#### 1) What This System Tracks (Actual)
-- **XP (by category)**: your stored XP totals (can include decimals)
-- **XP Wall Debt (by category)**: your stored debt totals (can include decimals)
-- **Effective XP** = max(0, Total XP − Total Debt)
-- **Level + Title (displayed)**: computed from **Effective XP**
-- **XP Gain bar (UI)**: computed from **Raw Total XP** (NOT affected by debt)
-- **Title Gain bar (UI)**: computed from **Raw Total XP** via the raw level (NOT affected by debt)
-- **Stats**: manual attributes clamped 0–100
+        # --- Core Rule (boxed) ---
+        st.markdown(
+            """
+            <div class="rulebox core">
+            <div class="rulebox-title">Core Rule</div>
+            <div class="rulebox-body">
+                <div>• XP is progress currency.</div>
+                <div>• XP Wall Debt blocks progression.</div>
+                <div>• When XP is earned while debt exists, earned XP pays down debt first. Only leftover XP becomes real XP gain in the selected category.</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
----
-#### 2) XP & Debt Interaction (Actual Logic)
-- **Effective XP = max(0, Total XP − Total Debt)**
-- If **Total Debt > 0** and you **Add XP**, the system runs debt payoff first:
-- It pays down debt **proportionally across ALL debt categories** based on each category’s share of total debt at the moment of payment.
-- If tiny rounding remainder exists, a cleanup pass finishes paying down remaining debt until the payment amount is fully applied.
-- Only the **leftover XP after debt payment** is added to your chosen XP category.
-- If you **Minus XP**, it only reduces that XP category (never increases debt).
+        # --- Boxed sections (title + markdown body) ---
+        sections = [
+            (
+                "1) What This System Tracks (Actual)",
+                """
+    - **XP (by category)**: your stored XP totals (can include decimals)
+    - **XP Wall Debt (by category)**: your stored debt totals (can include decimals)
+    - **Effective XP** = max(0, Total XP − Total Debt)
+    - **Level + Title (displayed)**: computed from **Effective XP**
+    - **XP Gain bar (UI)**: computed from **Raw Total XP** (NOT affected by debt)
+    - **Title Gain bar (UI)**: computed from **Raw Total XP** via the raw level (NOT affected by debt)
+    - **Stats**: manual attributes clamped 0–100
+    """,
+            ),
+            (
+                "2) XP & Debt Interaction (Actual Logic)",
+                """
+    - **Effective XP = max(0, Total XP − Total Debt)**
+    - If **Total Debt > 0** and you **Add XP**, the system runs debt payoff first:
+    - It pays down debt **proportionally across ALL debt categories** based on each category’s share of total debt at the moment of payment.
+    - If tiny rounding remainder exists, a cleanup pass finishes paying down remaining debt until the payment amount is fully applied.
+    - Only the **leftover XP after debt payment** is added to your chosen XP category.
+    - If you **Minus XP**, it only reduces that XP category (never increases debt).
+    """,
+            ),
+            (
+                "3) Level System (Actual Logic)",
+                """
+    - Level is computed using **floored integer XP**:
+    - The system uses `int(math.floor(xp))` before calculating levels (decimals do not count for level calculation).
+    - Requirement to go from Level **L** to **L+1** is **L × 10 XP**
+    - Starting at Level 1, the system repeatedly subtracts the current requirement until it can’t.
+    - The leftover is your **XP inside the current level**.
+    """,
+            ),
+            (
+                "4) Titles by Level Range (Used for Displayed Title)",
+                """
+    - Novice → Levels 1–5
+    - Trainee → Levels 6–10
+    - Adept → Levels 11–15
+    - Knight → Levels 16–20
+    - Champion → Levels 21–25
+    - Elite → Levels 26–30
+    - Legend → Levels 31–35
+    - Mythic → Levels 36–40
+    - Master → Levels 41–45
+    - Grandmaster → Levels 46–50
+    - Ascendant → Levels 51–55
+    - Exemplar → Levels 56–60
+    - Paragon → Levels 61–65
+    - Titan → Levels 66–70
+    - Sovereign → Levels 71–75
+    - Immortal-Seed → Levels 76–80
+    - Immortal → Levels 81–85
+    - Eternal-Seed → Levels 86–90
+    - Eternal → Levels 91–95
+    - World-Class → Levels 96–100
+    """,
+            ),
+            (
+                "5) What the 3 Bars Mean (Important UI Rules)",
+                """
+    - **XP Gain bar**
+    - Shows progress inside your current level computed from **Raw Total XP**.
+    - **Debt does NOT move this bar.**
+    - **Title Gain bar**
+    - Shows progress toward the next title threshold using the **Raw Level** derived from **Raw Total XP**.
+    - **Debt does NOT move this bar.**
+    - **XP Debt bar**
+    - Shows Total Debt relative to **DEBT_CAP = 100**.
+    - This is display only; it does not change the other bars.
+    """,
+            ),
+            (
+                "6) XP Earnable Actions (Rates Used by the XP Adjust Tool)",
+                """
+    **Per-hour categories:**
+    - Admin Work → 0.5 XP per hour
+    - Design Work → 1.0 XP per hour
+    - Gym Workout → 3.0 XP per hour
+    - Jiu Jitsu Training → 4.0 XP per hour
+    - Italian Studying → 2.0 XP per hour
+    - Italian Passive listening → 0.2 XP per hour
+    - Chess - Rated Matches → 2.0 XP per hour
+    - Chess - Study/ Analysis → 1.0 XP per hour
+    - Reading → 1.5 XP per hour
+    - New Skill Learning → 2.4 XP per hour
+    - Personal Challenge Quest → 3.6 XP per hour
+    - Recovery → 1.6 XP per hour
+    - Creative Output → 2.0 XP per hour
+    - General Life Task → 0.8 XP per hour
 
----
-#### 3) Level System (Actual Logic)
-- Level is computed using **floored integer XP**:
-- The system uses int(floor(xp) before calculating levels (decimals do not count for level calculation).
-- Level-up requirement for each step:
-- Requirement to go from Level L to L+1 is **L × 10 XP**
-- Computation method:
-- Starting at Level 1, the system repeatedly subtracts the current requirement until it can’t.
-- The leftover is your **XP inside the current level**.
+    **Quest completion categories:**
+    - Quest 1 → +3.0 XP (Completion)
+    - Quest 2 → +2.0 XP (Completion)
+    - Quest 3 → +1.0 XP (Completion)
 
----
-#### 4) Titles by Level Range (Used for Displayed Title)
-- Novice → Levels 1–5
-- Trainee → Levels 6–10
-- Adept → Levels 11–15
-- Knight → Levels 16–20
-- Champion → Levels 21–25
-- Elite → Levels 26–30
-- Legend → Levels 31–35
-- Mythic → Levels 36–40
-- Master → Levels 41–45
-- Grandmaster → Levels 46–50
-- Ascendant → Levels 51–55
-- Exemplar → Levels 56–60
-- Paragon → Levels 61–65
-- Titan → Levels 66–70
-- Sovereign → Levels 71–75
-- Immortal-Seed → Levels 76–80
-- Immortal → Levels 81–85
-- Eternal-Seed → Levels 86–90
-- Eternal → Levels 91–95
-- World-Class → Levels 96–100
+    **Streak categories:**
+    - Chess Streak → +1.0 XP
+    - Italian Streak → +1.0 XP
+    - Gym Streak → +1.0 XP
+    - Jiu Jitsu Streak → +1.0 XP
+    - Eating Healthy → +1.0 XP
+    - Meet Hydration target → +1.0 XP
+    """,
+            ),
+            (
+                "7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)",
+                """
+    **Normal debt categories (each Add applies the listed amount):**
+    - Skip Training → 2.0 XP debt
+    - Junk Eating → 2.0 XP debt
+    - Drug Use → 5.0 XP debt
+    - Blackout Drunk → 3.0 XP debt
+    - Reckless Driving → 4.0 XP debt
+    - Start Fight → 3.0 XP debt
+    - Doomscrolling → 1.5 XP debt
+    - Miss Work → 4.0 XP debt
+    - Impulsive Spend → 2.5 XP debt
+    - Malicious Deceit → 2.0 XP debt
+    - Break Oath → 6.0 XP debt
+    - All Nighter → 2.0 XP debt
+    - Avoid Duty → 2.0 XP debt
+    - Ignore Injury → 2.5 XP debt
+    - Miss Hydration → 1.0 XP debt
+    - Sleep Collapse → 2.0 XP debt
+    - Ghost Obligation → 3.5 XP debt
+    - Ego Decisions → 2.0 XP debt
+    - No Logging → 1.0 XP debt
+    - Message Pile → 1.5 XP debt
+    - Quest Miss → 3.0 XP debt *(manual judgement; the system does not enforce conditions)*
 
----
-#### 5) What the 3 Bars Mean (Important UI Rules)
-- **XP Gain bar**
-- Shows progress inside your current level computed from **Raw Total XP**.
-- **Debt does NOT move this bar.**
-- **Title Gain bar**
-- Shows progress toward the next title threshold using the **Raw Level** derived from **Raw Total XP**.
-- **Debt does NOT move this bar.**
-- **XP Debt bar**
-- Shows Total Debt relative to **DEBT_CAP = 100**.
-- This is display only; it does not change the other bars.
+    **Oath debt categories (each Add applies +6.0 XP debt):**
+    - Oath: No Cheating
+    - Oath: No Betrayal of Trust
+    - Oath: No Stealing
+    - Oath: No Harm Defenseless
+    - Oath: No Malicious Exploit
+    - Oath: Honor Commitments
+    - Oath: Compete w/ Integrity
+    - Oath: Accountability
+    - Oath: No Sabotage Others
 
----
-#### 6) XP Earnable Actions (Rates Used by the XP Adjust Tool)
-Per-hour categories:
-- Admin Work → 0.5 XP per hour
-- Design Work → 1.0 XP per hour
-- Gym Workout → 3.0 XP per hour
-- Jiu Jitsu Training → 4.0 XP per hour
-- Italian Studying → 2.0 XP per hour
-- Italian Passive listening → 0.2 XP per hour
-- Chess - Rated Matches → 2.0 XP per hour
-- Chess - Study/ Analysis → 1.0 XP per hour
-- Reading → 1.5 XP per hour
-- New Skill Learning → 2.4 XP per hour
-- Personal Challenge Quest → 3.6 XP per hour
-- Recovery → 1.6 XP per hour
-- Creative Output → 2.0 XP per hour
-- General Life Task → 0.8 XP per hour
+    **Important:** The system currently allows both **Break Oath** and individual **Oath: ...** categories to be used. Avoid double-penalizing unless you intentionally want that.
+    """,
+            ),
+            (
+                "8) Stats (Actual Rules)",
+                """
+    - Stats are stored under: Physical, Mental, Social, Skill.
+    - Stats are clamped to **0–100**.
+    - The Adjust Stats tool changes values by **±1** per click.
+    """,
+            ),
+            (
+                "9) Coin Economy (Design Only)",
+                """
+    - £1 = 1 Coin
+    - £180 = 180 Coins
+    - £600/week = 600 Coins/week
+    - Coins are **not implemented** in the current code.
+    """,
+            ),
+            (
+                "10) Stats Meaning Scale (Design Lore)",
+                """
+    - **-100** → extreme impairment / minimal motor-cognitive function
+    - **-50** → far below average adult
+    - **-40 to -10** → below-average adult variation band
+    - **0** → average untrained adult male baseline
+    - **+50** → trained competitive amateur
+    - **+65** → advanced regional amateur competitor
+    - **+80** → national competitor
+    - **+95** → elite international competitor
+    - **100** → best verified human performance
+    - Negative stats are **not active in code** unless range is expanded
+    """,
+            ),
+            (
+                "11) How to Measure Stats (Reference Benchmarks)",
+                """
+    **Physical**
+    - **PUSH** → Max push-up test *(avg 25 reps)*
+    - **PULL** → Max pull-up test *(avg 2 reps)*
+    - **SPD** → 100m sprint test *(avg 16.5s)*
+    - **STM** → 5km run test *(avg 35 min)*
+    - **DUR** → Recovery benchmark after stress tests
+    - **BAL** → Single-leg stand test *(avg 45 sec)*
+    - **FLX** → Sit-and-reach test *(avg 30 cm)*
+    - **RFLX** → Visual reaction time *(avg 230 ms)*
+    - **POW** → Power output benchmark *(e.g., medicine ball throw distance)*
 
-Quest completion categories:
-- Quest 1 → +3.0 XP (Completion)
-- Quest 2 → +2.0 XP (Completion)
-- Quest 3 → +1.0 XP (Completion)
+    **Mental**
+    - **LRN** → Recall test after short structured learning
+    - **LOG** → Logic benchmark *(e.g., 20-question reasoning test)*
+    - **MEM** → Digit or item span recall benchmark
+    - **STRAT** → Scenario planning depth benchmark
+    - **FOCUS** → Continuous attention benchmark test
+    - **CREAT** → Originality or idea-generation benchmark
+    - **AWARE** → Observation & environment recall test
+    - **JUDG** → Scenario decision-quality scoring
+    - **CALM** → Accuracy + heart-rate under pressure
 
-Streak categories:
-- Chess Streak → +1.0 XP
-- Italian Streak → +1.0 XP
-- Gym Streak → +1.0 XP
-- Jiu Jitsu Streak → +1.0 XP
-- Eating Healthy → +1.0 XP
-- Meet Hydration target → +1.0 XP
+    **Social**
+    - **SOC** → Social initiation & comfort benchmarks
+    - **LEAD** → Responsibility & group direction audit
+    - **NEG** → Negotiation/persuasion scenario benchmark
+    - **COM** → Explanation clarity & articulation scoring
+    - **EMP** → Emotion recognition & EQ benchmark
+    - **PRES** → Posture & body-language presence audit
 
----
-#### 7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)
-Normal debt categories (each Add applies the listed amount):
-- Skip Training → 2.0 XP debt
-- Junk Eating → 2.0 XP debt
-- Drug Use → 5.0 XP debt
-- Blackout Drunk → 3.0 XP debt
-- Reckless Driving → 4.0 XP debt
-- Start Fight → 3.0 XP debt
-- Doomscrolling → 1.5 XP debt
-- Miss Work → 4.0 XP debt
-- Impulsive Spend → 2.5 XP debt
-- Malicious Deceit → 2.0 XP debt
-- Break Oath → 6.0 XP debt
-- All Nighter → 2.0 XP debt
-- Avoid Duty → 2.0 XP debt
-- Ignore Injury → 2.5 XP debt
-- Miss Hydration → 1.0 XP debt
-- Sleep Collapse → 2.0 XP debt
-- Ghost Obligation → 3.5 XP debt
-- Ego Decisions → 2.0 XP debt
-- No Logging → 1.0 XP debt
-- Message Pile → 1.5 XP debt
-- Quest Miss → 3.0 XP debt *(manual judgement; the system does not enforce conditions)*
+    **Skill**
+    - **CHESS** → Rated match benchmark *(e.g., 10-game rating avg)*
+    - **ITALIAN** → A1 assessment benchmark *(reading/speaking/comprehension)*
+    - **JIU-JITSU** → Belt rank or coached evaluation
+    """,
+            ),
+            (
+                "12) System Constraints (Mechanics Do Not Auto-Trigger)",
+                """
+    - Stats are clamped to **0..100**
+    - Coins are **not implemented**
+    - Levels use **floored integer XP**
+    - Rulebook text does **not activate mechanics** without implemented logic
+    """,
+            ),
+        ]
 
-Oath debt categories (each Add applies **+6.0 XP debt**):
-- Oath: No Cheating
-- Oath: No Betrayal of Trust
-- Oath: No Stealing
-- Oath: No Harm Defenseless
-- Oath: No Malicious Exploit
-- Oath: Honor Commitments
-- Oath: Compete w/ Integrity
-- Oath: Accountability
-- Oath: No Sabotage Others
+    for title_text, body_md in sections:
+        body_html = rule_md_to_html(body_md)
 
-**Important:** The system currently allows both **Break Oath** and individual **Oath: ...** categories to be used. Avoid double-penalizing unless you intentionally want that.
+        st.markdown(
+            f"""
+            <div class="rulebox">
+            <div class="rulebox-title">{html.escape(title_text)}</div>
+            <div class="rulebox-body">
+                {body_html}
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
----
-#### 8) Stats (Actual Rules)
-- Stats are stored under: Physical, Mental, Social, Skill.
-- Stats are clamped to **0–100**.
-- The Adjust Stats tool changes values by **±1** per click.
-
----
-#### 9) Coin Economy (Design Only)
-- £1 = 1 Coin
-- £180 = 180 Coins
-- £600/week = 600 Coins/week
-- Coins are **not implemented** in the current code.
----
-#### 10) Stats Meaning Scale (Design Lore)
-- **-100** → extreme impairment / minimal motor-cognitive function
-- **-50** → far below average adult
-- **-40 to -10** → below-average adult variation band
-- **0** → average untrained adult male baseline
-- **+50** → trained competitive amateur
-- **+65** → advanced regional amateur competitor
-- **+80** → national competitor
-- **+95** → elite international competitor
-- **100** → best verified human performance
-- Negative stats are **not active in code** unless range is expanded
-
----
-#### 11) How to Measure Stats (Reference Benchmarks)
-**Physical**
-- **PUSH** → Max push-up test *(avg 25 reps)*
-- **PULL** → Max pull-up test *(avg 2 reps)*
-- **SPD** → 100m sprint test *(avg 16.5s)*
-- **STM** → 5km run test *(avg 35 min)*
-- **DUR** → Recovery benchmark after stress tests
-- **BAL** → Single-leg stand test *(avg 45 sec)*
-- **FLX** → Sit-and-reach test *(avg 30 cm)*
-- **RFLX** → Visual reaction time *(avg 230 ms)*
-- **POW** → Power output benchmark *(e.g., medicine ball throw distance)*
-
-**Mental**
-- **LRN** → Recall test after short structured learning
-- **LOG** → Logic benchmark *(e.g., 20-question reasoning test)*
-- **MEM** → Digit or item span recall benchmark
-- **STRAT** → Scenario planning depth benchmark
-- **FOCUS** → Continuous attention benchmark test
-- **CREAT** → Originality or idea-generation benchmark
-- **AWARE** → Observation & environment recall test
-- **JUDG** → Scenario decision-quality scoring
-- **CALM** → Accuracy + heart-rate under pressure
-
-**Social**
-- **SOC** → Social initiation & comfort benchmarks
-- **LEAD** → Responsibility & group direction audit
-- **NEG** → Negotiation/persuasion scenario benchmark
-- **COM** → Explanation clarity & articulation scoring
-- **EMP** → Emotion recognition & EQ benchmark
-- **PRES** → Posture & body-language presence audit
-
-**Skill**
-- **CHESS** → Rated match benchmark *(e.g., 10-game rating avg)*
-- **ITALIAN** → A1 assessment benchmark *(reading/speaking/comprehension)*
-- **JIU-JITSU** → Belt rank or coached evaluation
-
----
-#### 12) System Constraints (Mechanics Do Not Auto-Trigger)
-- Stats are clamped to **0..100**
-- Coins are **not implemented**
-- Levels use **floored integer XP**
-- Rulebook text does **not activate mechanics** without implemented logic
-"""
-        st.markdown(textwrap.dedent(rulebook_text).strip())
-        st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)  # closes rulebook-wrap and panel
 
 # ---------- SETTINGS ----------
 with st.expander("⚙️ Settings", expanded=False):
@@ -1923,3 +2197,4 @@ with st.expander("⚙️ Settings", expanded=False):
     with c6:
         if st.button("Reset Skill Stats", key="reset_skill_btn"):
             reset_stats_group("Skill")
+
