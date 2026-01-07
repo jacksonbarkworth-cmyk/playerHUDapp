@@ -799,7 +799,7 @@ st.markdown(
     header, [data-testid="stHeader"], [data-testid="stToolbar"] { background: transparent !important; }
 
     section.main > div.block-container{
-        padding-top: 22px !important;
+        padding-top: 6px !important;
         padding-bottom: 22px !important;
         padding-left: 10px !important;
         padding-right: 10px !important;
@@ -1041,9 +1041,60 @@ st.markdown(
         margin: 0 !important;
     }
 
+        /* HUD avatar circle */
+    .hud-avatar{
+        width:42px;
+        height:42px;
+        border-radius:999px;
+        border:2px solid rgba(0,220,255,0.55);
+        box-shadow: 0 0 18px rgba(0,220,255,0.55), inset 0 0 12px rgba(0,220,255,0.20);
+        background: rgba(0,3,20,0.55);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        color: rgba(180,255,255,0.95);
+        font-weight:950;
+        flex: 0 0 auto;
+    }
+    /* Stat labels (Level / XP / Title) */
+    .hud-stat-label {
+        font-size: 13px;
+        font-weight: 800;
+        opacity: 0.72;
+        letter-spacing: 0.5px;
+        margin-bottom: 2px;
+    }
+
+    /* Big numbers (Level value) */
+    .hud-stat-big {
+        font-size: 28px;
+        font-weight: 950;
+        color: rgba(180,255,255,0.96);
+        text-shadow: 0 0 14px rgba(0,255,255,0.6);
+        line-height: 1.1;
+    }
+
+    /* Medium values (XP total) */
+    .hud-stat-med {
+        font-size: 20px;
+        font-weight: 900;
+        color: rgba(180,255,255,0.92);
+        text-shadow: 0 0 10px rgba(0,220,255,0.4);
+        line-height: 1.3;
+    }
+
+    /* Title text */
+    .hud-stat-title {
+        font-size: 18px;
+        font-weight: 900;
+        color: rgba(255,255,255,0.94);
+        line-height: 1.3;
+    }
+
     @media (max-width: 600px){
         .hud-title{
-            font-size: 26px !important;
+            margin-top: 0px;
+            font-size: 34px !important;
             text-align: center;
             margin-bottom: 10px;
         }
@@ -1139,14 +1190,37 @@ with col_hud:
     st.markdown('<div class="hud-title">PLAYER HUD</div>', unsafe_allow_html=True)
 
     st.markdown(
-        """
-        <div class="hud-box">
-        <strong>Name:</strong> Jackson Barkworth<br>
-        <strong>Age:</strong> 22<br>
-        <strong>DOB:</strong> 06/11/2003<br>
-        <strong>Region:</strong> United Kingdom<br>
-        <strong>Height:</strong> 5'9<br>
-        <strong>Weight:</strong> 14 Stone
+        f"""
+    <div class="hud-box">
+      <div style="display:flex; align-items:flex-start; gap:12px;">
+        <div style="flex: 1 1 auto; min-width:0;">
+          <div style="font-weight:950; font-size:18px; letter-spacing:0.4px; color:rgba(255,255,255,0.98);">
+            Jackson Barkworth <span style="font-weight:800; color:rgba(180,255,255,0.92);">— {html.escape(title)}</span>
+          </div>
+          <div style="margin-top:4px; font-size:12.5px; color:rgba(255,255,255,0.70); font-weight:650;">
+            Region: United Kingdom
+          </div>
+        </div>
+        <div class="hud-avatar" style="margin-left:auto; align-self:flex-start;">JB</div>
+      </div>
+        <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Age</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">22</div>
+            </div>
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">DOB</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">06/11/2003</div>
+            </div>
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Height</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">5'9</div>
+            </div>
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Weight</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">14 Stone</div>
+            </div>
+        </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1155,27 +1229,40 @@ with col_hud:
     st.markdown(
         f"""
         <div class="progress-box">
-          <strong>Level:</strong> {level}<br>
-          <strong>XP:</strong> {fmt_xp(xp_total)}<br>
-          <strong>Title:</strong> {title}<br>
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline;">
+            <div style="font-weight:900; color:rgba(255,255,255,0.85);">Level</div>
+            <div style="font-weight:950; color:rgba(255,255,255,0.98); font-size:16px;">{level}</div>
+        </div>
 
-          <div class="bar-label">XP Gain</div>
-          <div class="glow-bar">
+        <div style="display:flex; justify-content:space-between; gap:12px; margin-top:6px; align-items:baseline;">
+            <div style="font-weight:900; color:rgba(255,255,255,0.85);">XP</div>
+            <div style="font-weight:950; color:rgba(180,255,255,0.95); text-shadow: 0 0 10px rgba(0,220,255,0.35);">
+            {fmt_xp(xp_total)}
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; gap:12px; margin-top:6px; align-items:baseline;">
+            <div style="font-weight:900; color:rgba(255,255,255,0.85);">Title</div>
+            <div style="font-weight:950; color:rgba(255,255,255,0.98);">{html.escape(title)}</div>
+        </div>
+
+        <div class="bar-label">XP Gain</div>
+        <div class="glow-bar">
             <div class="glow-bar-fill" style="width:{xp_pct}%;"></div>
             <div class="glow-bar-text">{fmt_xp(xp_in_level_display)}/{fmt_xp(xp_required_display)}</div>
-          </div>
+        </div>
 
-          <div class="bar-label">Title Gain</div>
-          <div class="glow-bar">
+        <div class="bar-label">Title Gain</div>
+        <div class="glow-bar">
             <div class="glow-bar-fill" style="width:{title_pct}%;"></div>
             <div class="glow-bar-text">{level_raw}/{title_next_raw}</div>
-          </div>
+        </div>
 
-          <div class="bar-label">XP Debt{debt_warning}</div>
-          <div class="glow-bar">
+        <div class="bar-label">XP Debt{debt_warning}</div>
+        <div class="glow-bar">
             <div class="glow-bar-fill-red" style="width:{debt_pct}%;"></div>
             <div class="glow-bar-text glow-bar-text-red">{fmt_xp(debt_total)}/{fmt_xp(DEBT_CAP)}</div>
-          </div>
+        </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1836,7 +1923,3 @@ with st.expander("⚙️ Settings", expanded=False):
     with c6:
         if st.button("Reset Skill Stats", key="reset_skill_btn"):
             reset_stats_group("Skill")
-
-
-
-
