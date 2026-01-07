@@ -2,8 +2,39 @@ import streamlit as st
 import math
 import requests
 import textwrap
+import html
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 st.set_page_config(page_title="Player HUD", layout="wide")
+
+# ---------- TIMEZONE ----------
+USER_TZ = ZoneInfo("Europe/London")
+
+def _parse_iso_dt(s):
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s.replace("Z", "+00:00")
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+def fmt_log_dt_from_payload(payload):
+    ts = (payload or {}).get("_ts_utc")
+    dt = _parse_iso_dt(ts)
+    if not dt:
+        return "??:?? - ??.??.????"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(USER_TZ)
+    return local.strftime("%H:%M - %d.%m.%Y")
+
+def with_ts(p):
+    p = dict(p or {})
+    p["_ts_utc"] = datetime.now(timezone.utc).isoformat()
+    return p
 
 # ---------- STATE ----------
 if "section" not in st.session_state:
@@ -117,7 +148,7 @@ DEFAULT_DEBT_VALUES = {
     "No Logging": 0.0,
     "Message Pile": 0.0,
     "Quest Miss": 0.0,
-        # --- OATH DEBT ITEMS (each Add = +6 XP debt) ---
+    # --- OATH DEBT ITEMS (each Add = +6 XP debt) ---
     "Oath: No Cheating": 0.0,
     "Oath: No Betrayal of Trust": 0.0,
     "Oath: No Stealing": 0.0,
@@ -127,7 +158,6 @@ DEFAULT_DEBT_VALUES = {
     "Oath: Compete w/ Integrity": 0.0,
     "Oath: Accountability": 0.0,
     "Oath: No Sabotage Others": 0.0,
-
 }
 
 DEBT_PENALTY = {
@@ -152,7 +182,7 @@ DEBT_PENALTY = {
     "No Logging": 1.0,
     "Message Pile": 1.5,
     "Quest Miss": 3.0,
-        # --- OATH PENALTIES (each Add = +6 XP debt) ---
+    # --- OATH PENALTIES (each Add = +6 XP debt) ---
     "Oath: No Cheating": 6.0,
     "Oath: No Betrayal of Trust": 6.0,
     "Oath: No Stealing": 6.0,
@@ -186,6 +216,15 @@ def fmt_xp(x: float, max_decimals: int = 2) -> str:
     s = f"{x:.{max_decimals}f}".rstrip("0").rstrip(".")
     return s if s else "0"
 
+def fmt_log_dt_from_payload(payload: dict) -> str:
+    ts = (payload or {}).get("_ts_utc")
+    dt = _parse_iso_dt(ts)
+    if not dt:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(USER_TZ)
+    return local.strftime("%H:%M - %d.%m.%Y")
 
 def coerce_and_align_keep_meta(loaded: dict, defaults: dict) -> dict:
     """
@@ -261,158 +300,6 @@ def apply_xp_with_debt_payment(xp_gain: float) -> float:
     return float(xp_gain - pay)
 
 
-# ---------- CLOUD SAVE (SUPABASE) ----------
-CLOUD_ENABLED = (
-    "SUPABASE_URL" in st.secrets
-    and "SUPABASE_SERVICE_ROLE_KEY" in st.secrets
-    and "SAVE_KEY" in st.secrets
-)
-
-if CLOUD_ENABLED:
-    SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
-    SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
-    SAVE_KEY = st.secrets["SAVE_KEY"]
-
-    _SB_HEADERS = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    def cloud_load_state():
-        url = f"{SUPABASE_URL}/rest/v1/player_state"
-        params = {"save_key": f"eq.{SAVE_KEY}", "select": "xp_values,debt_values"}
-        r = requests.get(url, headers=_SB_HEADERS, params=params, timeout=15)
-        if r.status_code >= 400:
-            raise RuntimeError(f"Supabase load failed ({r.status_code}): {r.text}")
-        rows = r.json()
-        if not rows:
-            return None
-        return rows[0].get("xp_values", {}), rows[0].get("debt_values", {})
-
-    def cloud_save_state(xp_values: dict, debt_values: dict):
-        url = f"{SUPABASE_URL}/rest/v1/player_state"
-        payload = {"save_key": SAVE_KEY, "xp_values": xp_values, "debt_values": debt_values}
-        headers = {**_SB_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"}
-        r = requests.post(url, headers=headers, json=payload, timeout=15)
-        if r.status_code >= 400:
-            raise RuntimeError(f"Supabase save failed ({r.status_code}): {r.text}")
-
-    def cloud_append_log(event_type: str, payload: dict, snapshot=None):
-        url = f"{SUPABASE_URL}/rest/v1/player_state_log"
-        row = {
-            "save_key": SAVE_KEY,
-            "event_type": event_type,
-            "payload": payload or {},
-            "snapshot": snapshot,
-        }
-        r = requests.post(url, headers=_SB_HEADERS, json=row, timeout=15)
-        if r.status_code >= 400:
-            raise RuntimeError(f"Supabase log append failed ({r.status_code}): {r.text}")
-
-else:
-    def cloud_load_state():
-        return None
-
-    def cloud_save_state(xp_values: dict, debt_values: dict):
-        return None
-
-    def cloud_append_log(event_type: str, payload: dict, snapshot=None):
-        return None
-
-    def cloud_append_log(event_type: str, payload: dict, snapshot=None):
-        url = f"{SUPABASE_URL}/rest/v1/player_state_log"
-        row = {
-            "save_key": SAVE_KEY,
-            "event_type": event_type,
-            "payload": payload or {},
-            "snapshot": snapshot,   # optional
-        }
-        r = requests.post(url, headers=_SB_HEADERS, json=row, timeout=15)
-        if r.status_code >= 400:
-            raise RuntimeError(f"Supabase log append failed ({r.status_code}): {r.text}")
-
-def ensure_stats_in_session_from_meta():
-    meta = st.session_state.xp_values.get("__stats__", {}) if isinstance(st.session_state.xp_values, dict) else {}
-    if "stats" not in st.session_state:
-        st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
-
-    # load from meta if present
-    if isinstance(meta, dict) and meta:
-        for group, defaults in DEFAULT_STATS.items():
-            loaded_group = meta.get(group, {})
-            st.session_state.stats[group] = coerce_int_dict(loaded_group, defaults)
-
-
-def write_stats_to_meta_before_save():
-    # store stats inside xp_values meta to persist without changing DB schema
-    if "stats" not in st.session_state:
-        return
-    st.session_state.xp_values["__stats__"] = {
-        "Physical": st.session_state.stats.get("Physical", {}).copy(),
-        "Mental": st.session_state.stats.get("Mental", {}).copy(),
-        "Social": st.session_state.stats.get("Social", {}).copy(),
-        "Skill": st.session_state.stats.get("Skill", {}).copy(),
-    }
-
-def save_all(event_type: str | None = None, payload: dict | None = None, include_snapshot: bool = False):
-    write_stats_to_meta_before_save()
-
-    # 1) append audit log first (so even if save fails, you know it was attempted)
-    if CLOUD_ENABLED and event_type:
-        snap = None
-        if include_snapshot:
-            snap = {
-                "xp_values": st.session_state.xp_values,
-                "debt_values": st.session_state.debt_values,
-            }
-        try:
-            cloud_append_log(event_type, payload or {}, snapshot=snap)
-        except Exception as e:
-            st.error(f"Cloud log failed: {e}")
-
-    # 2) save current snapshot
-    try:
-        cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-    except Exception as e:
-        st.error(f"Cloud save failed: {e}")
-
-def reset_all():
-    st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
-    st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
-    st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
-    save_all(
-        event_type="reset",
-        payload={"reason": "user_clicked_reset_all"},
-        include_snapshot=True,  # reset is a good time to snapshot
-    )
-    st.rerun()
-
-
-# ---------- CLOUD INIT ----------
-if "xp_values" not in st.session_state or "debt_values" not in st.session_state:
-    try:
-        loaded = cloud_load_state()
-    except Exception as e:
-        st.warning(f"Cloud sync unavailable. Using local defaults for this session.\n\nDetails: {e}")
-        loaded = None
-
-    if loaded is None:
-        st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
-        st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
-        st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
-        save_all()
-    else:
-        xp_loaded, debt_loaded = loaded
-        st.session_state.xp_values = coerce_and_align_keep_meta(xp_loaded, DEFAULT_XP_VALUES)
-        st.session_state.debt_values = coerce_and_align_keep_meta(debt_loaded, DEFAULT_DEBT_VALUES)
-        ensure_stats_in_session_from_meta()
-
-# Always align (prevents KeyError if old cloud state exists)
-st.session_state.xp_values = coerce_and_align_keep_meta(st.session_state.get("xp_values", {}), DEFAULT_XP_VALUES)
-st.session_state.debt_values = coerce_and_align_keep_meta(st.session_state.get("debt_values", {}), DEFAULT_DEBT_VALUES)
-ensure_stats_in_session_from_meta()
-
 # ---------- BACKGROUND RULES: LEVEL + TITLE SYSTEM ----------
 MAX_LEVEL = 100
 TITLE_RANGES = [
@@ -469,6 +356,251 @@ def compute_level(total_xp: float, max_level: int = MAX_LEVEL) -> tuple[int, flo
     xp_in_level = remaining
     return level, xp_in_level, req
 
+
+def compute_derived_state_now() -> dict:
+    xp_total_now = float(sum(st.session_state.xp_values[k] for k in DEFAULT_XP_VALUES.keys()))
+    debt_total_now = float(sum(st.session_state.debt_values[k] for k in DEFAULT_DEBT_VALUES.keys()))
+    effective_xp_now = max(0.0, xp_total_now - debt_total_now)
+    lvl_now, _xin, _req = compute_level(effective_xp_now, MAX_LEVEL)
+    ttl_now = title_for_level(lvl_now)
+    return {
+        "xp_total": float(xp_total_now),
+        "debt_total": float(debt_total_now),
+        "effective_xp": float(effective_xp_now),
+        "level": int(lvl_now),
+        "title": str(ttl_now),
+    }
+
+def get_prev_derived_state() -> dict:
+    meta = {}
+    if isinstance(st.session_state.get("xp_values", {}), dict):
+        meta = st.session_state.xp_values.get("__last_derived__", {}) or {}
+    return meta if isinstance(meta, dict) else {}
+
+def set_prev_derived_state(state: dict):
+    if isinstance(st.session_state.get("xp_values", {}), dict):
+        st.session_state.xp_values["__last_derived__"] = state
+
+
+# ---------- CLOUD SAVE (SUPABASE) ----------
+CLOUD_ENABLED = (
+    "SUPABASE_URL" in st.secrets
+    and "SUPABASE_SERVICE_ROLE_KEY" in st.secrets
+    and "SAVE_KEY" in st.secrets
+)
+
+if CLOUD_ENABLED:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"].rstrip("/")
+    SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+    SAVE_KEY = st.secrets["SAVE_KEY"]
+
+    _SB_HEADERS = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    def cloud_load_state():
+        url = f"{SUPABASE_URL}/rest/v1/player_state"
+        params = {"save_key": f"eq.{SAVE_KEY}", "select": "xp_values,debt_values"}
+        r = requests.get(url, headers=_SB_HEADERS, params=params, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase load failed ({r.status_code}): {r.text}")
+        rows = r.json()
+        if not rows:
+            return None
+        return rows[0].get("xp_values", {}), rows[0].get("debt_values", {})
+
+    def cloud_save_state(xp_values: dict, debt_values: dict):
+        url = f"{SUPABASE_URL}/rest/v1/player_state"
+        payload = {"save_key": SAVE_KEY, "xp_values": xp_values, "debt_values": debt_values}
+        headers = {**_SB_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"}
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase save failed ({r.status_code}): {r.text}")
+
+    def cloud_append_log(event_type: str, payload: dict, snapshot=None):
+        url = f"{SUPABASE_URL}/rest/v1/player_state_log"
+        row = {
+            "save_key": SAVE_KEY,
+            "event_type": event_type,
+            "payload": payload or {},
+            "snapshot": snapshot,
+        }
+        r = requests.post(url, headers=_SB_HEADERS, json=row, timeout=15)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase log append failed ({r.status_code}): {r.text}")
+
+    def cloud_load_logs(limit=500):
+        url = f"{SUPABASE_URL}/rest/v1/player_state_log"
+
+        attempts = [
+            {
+                "params": {
+                    "save_key": f"eq.{SAVE_KEY}",
+                    "select": "id,event_type,payload",
+                    "order": "id.desc",
+                    "limit": str(limit),
+                }
+            },
+            {
+                "params": {
+                    "save_key": f"eq.{SAVE_KEY}",
+                    "select": "event_type,payload",
+                    "limit": str(limit),
+                }
+            },
+        ]
+
+        last_err = None
+        for a in attempts:
+            r = requests.get(url, headers=_SB_HEADERS, params=a["params"], timeout=15)
+            if r.status_code < 400:
+                return r.json()
+            last_err = r.text
+
+        raise RuntimeError(f"Supabase log load failed: {last_err}")
+        return r.json()
+
+else:
+    def cloud_load_state():
+        return None
+
+    def cloud_save_state(xp_values, debt_values):
+        return None
+
+    def cloud_append_log(event_type, payload, snapshot=None):
+        return None
+
+    def cloud_load_logs(limit=500):
+        return []
+
+        last_err = None
+        for a in attempts:
+            r = requests.get(url, headers=_SB_HEADERS, params=a["params"], timeout=15)
+            if r.status_code < 400:
+                return r.json()
+            last_err = r.text
+
+        raise RuntimeError(f"Supabase log load failed: {last_err}")
+
+def ensure_stats_in_session_from_meta():
+    meta = st.session_state.xp_values.get("__stats__", {}) if isinstance(st.session_state.xp_values, dict) else {}
+    if "stats" not in st.session_state:
+        st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+
+    # load from meta if present
+    if isinstance(meta, dict) and meta:
+        for group, defaults in DEFAULT_STATS.items():
+            loaded_group = meta.get(group, {})
+            st.session_state.stats[group] = coerce_int_dict(loaded_group, defaults)
+
+
+def write_stats_to_meta_before_save():
+    # store stats inside xp_values meta to persist without changing DB schema
+    if "stats" not in st.session_state:
+        return
+    st.session_state.xp_values["__stats__"] = {
+        "Physical": st.session_state.stats.get("Physical", {}).copy(),
+        "Mental": st.session_state.stats.get("Mental", {}).copy(),
+        "Social": st.session_state.stats.get("Social", {}).copy(),
+        "Skill": st.session_state.stats.get("Skill", {}).copy(),
+    }
+
+def save_all(event_type=None, payload=None, include_snapshot=False):
+    write_stats_to_meta_before_save()
+
+    prev = get_prev_derived_state()
+    now = compute_derived_state_now()
+
+    # 1) append log first
+    if CLOUD_ENABLED and event_type:
+        snap = None
+        if include_snapshot:
+            snap = {
+                "xp_values": st.session_state.xp_values,
+                "debt_values": st.session_state.debt_values,
+            }
+
+        try:
+            cloud_append_log(event_type, with_ts(payload), snapshot=snap)
+
+            if isinstance(prev, dict) and prev:
+                if str(now.get("title")) != str(prev.get("title")):
+                    cloud_append_log("title_unlocked", with_ts({"title": now.get("title")}), snapshot=None)
+
+                if int(now.get("level", 0)) > int(prev.get("level", 0)):
+                    cloud_append_log(
+                        "level_up",
+                        with_ts({"from": int(prev.get("level", 0)), "to": int(now.get("level", 0))}),
+                        snapshot=None,
+                    )
+        except Exception as e:
+            st.error(f"Cloud log failed: {e}")
+
+    # store derived state in meta BEFORE saving
+    set_prev_derived_state(now)
+
+    # 2) save snapshot
+    try:
+        cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+    except Exception as e:
+        st.error(f"Cloud save failed: {e}")
+
+    # store last derived state in meta
+    set_prev_derived_state(now)
+
+    # 2) save current snapshot
+    try:
+        cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+    except Exception as e:
+        st.error(f"Cloud save failed: {e}")
+
+    # update last derived state (stored in meta) BEFORE saving state
+    set_prev_derived_state(now)
+
+    # 2) save current snapshot
+    try:
+        cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
+    except Exception as e:
+        st.error(f"Cloud save failed: {e}")
+
+
+def reset_all():
+    st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
+    st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
+    st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+    save_all(
+        event_type="reset",
+        payload={"reason": "user_clicked_reset_all"},
+        include_snapshot=True,
+    )
+    st.rerun()
+
+
+# ---------- CLOUD INIT ----------
+if "xp_values" not in st.session_state or "debt_values" not in st.session_state:
+    try:
+        loaded = cloud_load_state()
+    except Exception as e:
+        st.warning(f"Cloud sync unavailable. Using local defaults for this session.\n\nDetails: {e}")
+        loaded = None
+
+    if loaded is None:
+        st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
+        st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
+        st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+        save_all()
+    else:
+        xp_loaded, debt_loaded = loaded
+        st.session_state.xp_values = coerce_and_align_keep_meta(xp_loaded, DEFAULT_XP_VALUES)
+        st.session_state.debt_values = coerce_and_align_keep_meta(debt_loaded, DEFAULT_DEBT_VALUES)
+        ensure_stats_in_session_from_meta()
+
+# Always align (prevents KeyError if old cloud state exists)
+st.session_state.xp_values = coerce_and_align_keep_meta(st.session_state.get("xp_values", {}), DEFAULT_XP_VALUES)
+st.session_state.debt_values = coerce_and_align_keep_meta(st.session_state.get("debt_values", {}), DEFAULT_DEBT_VALUES)
+ensure_stats_in_session_from_meta()
 
 # ---------- GLOBAL STYLES ----------
 st.markdown(
@@ -609,7 +741,7 @@ st.markdown(
         text-shadow: 0 0 14px rgba(0,220,255,0.7);
     }
 
-    /* Make ALL widget labels white (Category/Mode/Time/etc.) */
+    /* Make ALL widget labels white */
     [data-testid="stWidgetLabel"] label,
     [data-testid="stWidgetLabel"] > label,
     label,
@@ -640,10 +772,6 @@ st.markdown(
         padding: 0 !important;
         margin: 0 !important;
         border: 0 !important;
-    }
-    div[data-testid="stSelectbox"] input:focus{
-        outline: none !important;
-        box-shadow: none !important;
     }
 
     /* Buttons */
@@ -751,23 +879,28 @@ title = title_for_level(level)
 # Raw level (for UI bars that should NOT move when debt changes)
 level_raw, _xp_in_level_raw_for_title, _xp_required_raw_for_title = compute_level(xp_total, MAX_LEVEL)
 
-# Title bar should use raw level so debt can't move it
+# Title bar values (you already had these)
 title_next_raw = title_next_threshold(level_raw)
 title_pct = 0 if title_next_raw <= 0 else max(0, min(100, (level_raw / title_next_raw) * 100))
 
-# XP Gain bar should NOT be affected by debt (your UI requirement)
-# So compute the bar from RAW XP instead.
-_level_raw, xp_in_level_raw, xp_required_raw = compute_level(xp_total, MAX_LEVEL)
+# XP Gain bar should NOT be affected by debt
+# Level is still based on floored effective XP rules (compute_level floors internally)
+level_raw, _xin_raw_int, xp_required_raw = compute_level(xp_total, MAX_LEVEL)
 
-xp_in_level_display = float(xp_in_level_raw)
+# Total XP required to reach the START of current level (sum_{l=1}^{level-1} l*10)
+xp_spent_before_level = 10.0 * (level_raw - 1) * level_raw / 2.0
+
+# XP inside level uses RAW xp_total so decimals show
+xp_in_level_display = max(0.0, float(xp_total) - xp_spent_before_level)
+
 xp_required_display = float(xp_required_raw)
+
+# Clamp inside-level XP so bar never overflows
+xp_in_level_display = min(xp_in_level_display, xp_required_display)
+
 xp_pct = 0.0 if xp_required_display <= 0 else max(
     0.0, min(100.0, (xp_in_level_display / xp_required_display) * 100.0)
 )
-
-# Title gain remains tied to effective level (fine)
-title_next = title_next_threshold(level)
-title_pct = 0 if title_next <= 0 else max(0, min(100, (level / title_next) * 100))
 
 DEBT_CAP = 100.0
 debt_pct = 0 if DEBT_CAP <= 0 else max(0, min(100, (debt_total / DEBT_CAP) * 100))
@@ -829,8 +962,9 @@ with col_panel:
         "Mental Stats",
         "Social Stats",
         "Skill Stats",
-        "Tools",
+        "Tools & Gear",
         "Rule Book",
+        "Log",  # <-- needed so the Settings button can navigate without snapping back
     ]
 
     st.markdown('<div class="menu-header">Menu</div>', unsafe_allow_html=True)
@@ -873,7 +1007,6 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # Inline adjust
         st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Adjust XP</div>', unsafe_allow_html=True)
 
@@ -900,8 +1033,7 @@ with col_panel:
 
         if apply_clicked:
             base = float(xp_delta_from_choice(adjust_cat, time_choice))
-
-            leftover = None  # IMPORTANT: define this so payload always has a value
+            leftover = None
 
             if adjust_mode == "Minus":
                 st.session_state.xp_values[adjust_cat] = max(
@@ -909,7 +1041,6 @@ with col_panel:
                     float(st.session_state.xp_values[adjust_cat]) - base
                 )
             else:
-                # Add: pays debt first, then adds leftover to XP
                 leftover = apply_xp_with_debt_payment(base)
                 st.session_state.xp_values[adjust_cat] = max(
                     0.0,
@@ -929,16 +1060,13 @@ with col_panel:
             )
             st.rerun()
 
-
     # -------- XP WALL DEBT --------
     elif section == "XP Wall Debt":
         debt_items = list(DEFAULT_DEBT_VALUES.keys())
 
-        # split: normal debt vs oath debt
         normal_debt_items = [k for k in debt_items if k not in OATH_KEYS]
         oath_debt_items = [k for k in debt_items if k in OATH_KEYS]
 
-        # --- NORMAL DEBT ROWS ---
         rows_html = "\n".join(
             f"""
             <div class="xp-row">
@@ -959,7 +1087,6 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # --- OATH DEBT ROWS (same style rows) ---
         oath_rows_html = "\n".join(
             f"""
             <div class="xp-row">
@@ -973,17 +1100,13 @@ with col_panel:
         st.markdown(
             f"""
             <div class="panel">
-                <div class="panel-title">Oath Debt (Each Add = +6 XP)</div>
-                <div style="opacity:0.9; font-weight:800; line-height:1.6; margin-bottom:10px;">
-                    These are real debt categories. Use <b>Adjust Debt</b> to add/remove them.
-                </div>
+                <div class="panel-title">Oath Debt</div>
                 {oath_rows_html}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        # --- SPACING BEFORE ADJUST CONTROLS ---
         st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
         st.markdown('<div class="panel-title">Adjust Debt</div>', unsafe_allow_html=True)
 
@@ -1019,7 +1142,7 @@ with col_panel:
             )
             st.rerun()
 
-    # -------- STATS SECTIONS (0/100 + adjust tool) --------
+    # -------- STATS SECTIONS --------
     def render_stats_panel(title_text: str, group_key: str, widget_prefix: str):
         stats_dict = st.session_state.stats.get(group_key, {}).copy()
 
@@ -1083,12 +1206,112 @@ with col_panel:
     elif section == "Skill Stats":
         render_stats_panel("Skill Stats", "Skill", "skill")
 
-    # -------- Tools / Rule Book --------
-    elif section == "Tools":
+    # -------- LOG PAGE --------
+    elif section == "Log":
         st.markdown(
             """
             <div class="panel">
-              <div class="panel-title">Tools</div>
+            <div class="panel-title">Log</div>
+            <div style="opacity:0.85; font-weight:800; line-height:1.6;">
+                Closest date/time is shown at the top.
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        limit = st.selectbox("Show last", [50, 100, 200, 500, 1000], index=0, key="log_limit")
+
+        logs = []
+        if CLOUD_ENABLED:
+            try:
+                logs = cloud_load_logs(limit=int(limit))
+            except Exception as e:
+                st.error(f"Could not load logs: {e}")
+                logs = []
+        else:
+            st.info("Cloud is disabled, so there are no logs to display.")
+
+        def render_log_line(event_type: str, payload: dict) -> str:
+            p = payload or {}
+            ts = fmt_log_dt_from_payload(p)
+
+            if event_type == "stat_adjust":
+                group = p.get("group", "")
+                mode = p.get("mode", "")
+                newv = p.get("new_value", None)
+                gain_word = "Gain" if mode == "Add" else "Loss"
+                # matches your example format; shows new stat level
+                if newv is not None:
+                    return f"{ts} - {group} Stats {gain_word} by 1 ({int(newv)}/100)"
+                return f"{ts} - {group} Stats {gain_word} by 1"
+
+            if event_type == "xp_adjust":
+                cat = p.get("category", "")
+                mode = p.get("mode", "")
+                base = p.get("base", 0.0)
+                leftover = p.get("leftover_after_debt", None)
+                amt = leftover if leftover is not None else base
+                action = "XP Gain" if mode == "Add" else "XP Minus"
+                return f"{ts} - {action} from {cat} ({fmt_xp(amt)} XP)"
+
+            if event_type == "debt_adjust":
+                cat = p.get("category", "")
+                mode = p.get("mode", "")
+                base_pen = p.get("base_penalty", None)
+                delta = p.get("delta", 0.0)
+                amt = base_pen if base_pen is not None else abs(delta)
+                action = "XP Debt" if mode == "Add" else "Debt Minus"
+                return f"{ts} - {action} from {cat} ({fmt_xp(amt)} XP)"
+
+            if event_type == "level_up":
+                fr = p.get("from", "")
+                to = p.get("to", "")
+                return f"{ts} - Level Increase from {fr} to {to}"
+
+            if event_type == "title_unlocked":
+                t = p.get("title", "")
+                return f"{ts} - New Title Unlocked ({t})"
+
+            if event_type == "reset":
+                return f"{ts} - Reset"
+
+            return f"{ts} - {event_type}"
+
+        if not logs:
+            st.info("No log entries yet.")
+        else:
+            lines = []
+            for row in logs:
+                event_type = row.get("event_type", "") or ""
+                payload = row.get("payload", {}) or {}
+                lines.append(render_log_line(event_type, payload))
+
+            rows_html = "\n".join(
+                f"""
+                <div class="xp-row">
+                    <div class="xp-name" style="font-weight:900;">{html.escape(line)}</div>
+                </div>
+                """
+                for line in lines
+            )
+
+            st.markdown(
+                f"""
+                <div class="panel">
+                    <div class="panel-title">Entries</div>
+                    {rows_html}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # -------- Tools / Rule Book --------
+    elif section == "Tools & Gear":
+        st.markdown(
+            """
+            <div class="panel">
+              <div class="panel-title">Tools & Gear</div>
               <div style="opacity:0.85; font-weight:800;">
                 (Coming soon)
               </div>
@@ -1098,226 +1321,221 @@ with col_panel:
         )
 
     elif section == "Rule Book":
-        rulebook_text = """
-    **Core Rule**
-    - XP is progress currency.
-    - XP Wall Debt blocks progression.
-    - When XP is earned while debt exists, earned XP pays down debt first. Only leftover XP becomes real XP gain in the selected category.
+        rulebook_text = """**Core Rule**
+- XP is progress currency.
+- XP Wall Debt blocks progression.
+- When XP is earned while debt exists, earned XP pays down debt first. Only leftover XP becomes real XP gain in the selected category.
 
-    ---
-    #### 1) What This System Tracks (Actual)
-    - **XP (by category)**: your stored XP totals (can include decimals)
-    - **XP Wall Debt (by category)**: your stored debt totals (can include decimals)
-    - **Effective XP** = max(0, Total XP − Total Debt)
-    - **Level + Title (displayed)**: computed from **Effective XP**
-    - **XP Gain bar (UI)**: computed from **Raw Total XP** (NOT affected by debt)
-    - **Title Gain bar (UI)**: computed from **Raw Total XP** via the raw level (NOT affected by debt)
-    - **Stats**: manual attributes clamped 0–100
+---
+#### 1) What This System Tracks (Actual)
+- **XP (by category)**: your stored XP totals (can include decimals)
+- **XP Wall Debt (by category)**: your stored debt totals (can include decimals)
+- **Effective XP** = max(0, Total XP − Total Debt)
+- **Level + Title (displayed)**: computed from **Effective XP**
+- **XP Gain bar (UI)**: computed from **Raw Total XP** (NOT affected by debt)
+- **Title Gain bar (UI)**: computed from **Raw Total XP** via the raw level (NOT affected by debt)
+- **Stats**: manual attributes clamped 0–100
 
-    ---
-    #### 2) XP & Debt Interaction (Actual Logic)
-    - **Effective XP = max(0, Total XP − Total Debt)**
-    - If **Total Debt > 0** and you **Add XP**, the system runs debt payoff first:
-    - It pays down debt **proportionally across ALL debt categories** based on each category’s share of total debt at the moment of payment.
-    - If tiny rounding remainder exists, a cleanup pass finishes paying down remaining debt until the payment amount is fully applied.
-    - Only the **leftover XP after debt payment** is added to your chosen XP category.
-    - If you **Minus XP**, it only reduces that XP category (never increases debt).
+---
+#### 2) XP & Debt Interaction (Actual Logic)
+- **Effective XP = max(0, Total XP − Total Debt)**
+- If **Total Debt > 0** and you **Add XP**, the system runs debt payoff first:
+- It pays down debt **proportionally across ALL debt categories** based on each category’s share of total debt at the moment of payment.
+- If tiny rounding remainder exists, a cleanup pass finishes paying down remaining debt until the payment amount is fully applied.
+- Only the **leftover XP after debt payment** is added to your chosen XP category.
+- If you **Minus XP**, it only reduces that XP category (never increases debt).
 
-    ---
-    #### 3) Level System (Actual Logic)
-    - Level is computed using **floored integer XP**:
-    - The system uses int(floor(xp) before calculating levels (decimals do not count for level calculation).
-    - Level-up requirement for each step:
-    - Requirement to go from Level L to L+1 is **L × 10 XP**
-    - Computation method:
-    - Starting at Level 1, the system repeatedly subtracts the current requirement until it can’t.
-    - The leftover is your **XP inside the current level**.
+---
+#### 3) Level System (Actual Logic)
+- Level is computed using **floored integer XP**:
+- The system uses int(floor(xp) before calculating levels (decimals do not count for level calculation).
+- Level-up requirement for each step:
+- Requirement to go from Level L to L+1 is **L × 10 XP**
+- Computation method:
+- Starting at Level 1, the system repeatedly subtracts the current requirement until it can’t.
+- The leftover is your **XP inside the current level**.
 
-    ---
-    #### 4) Titles by Level Range (Used for Displayed Title)
-    - Novice → Levels 1–5
-    - Trainee → Levels 6–10
-    - Adept → Levels 11–15
-    - Knight → Levels 16–20
-    - Champion → Levels 21–25
-    - Elite → Levels 26–30
-    - Legend → Levels 31–35
-    - Mythic → Levels 36–40
-    - Master → Levels 41–45
-    - Grandmaster → Levels 46–50
-    - Ascendant → Levels 51–55
-    - Exemplar → Levels 56–60
-    - Paragon → Levels 61–65
-    - Titan → Levels 66–70
-    - Sovereign → Levels 71–75
-    - Immortal-Seed → Levels 76–80
-    - Immortal → Levels 81–85
-    - Eternal-Seed → Levels 86–90
-    - Eternal → Levels 91–95
-    - World-Class → Levels 96–100
+---
+#### 4) Titles by Level Range (Used for Displayed Title)
+- Novice → Levels 1–5
+- Trainee → Levels 6–10
+- Adept → Levels 11–15
+- Knight → Levels 16–20
+- Champion → Levels 21–25
+- Elite → Levels 26–30
+- Legend → Levels 31–35
+- Mythic → Levels 36–40
+- Master → Levels 41–45
+- Grandmaster → Levels 46–50
+- Ascendant → Levels 51–55
+- Exemplar → Levels 56–60
+- Paragon → Levels 61–65
+- Titan → Levels 66–70
+- Sovereign → Levels 71–75
+- Immortal-Seed → Levels 76–80
+- Immortal → Levels 81–85
+- Eternal-Seed → Levels 86–90
+- Eternal → Levels 91–95
+- World-Class → Levels 96–100
 
-    ---
-    #### 5) What the 3 Bars Mean (Important UI Rules)
-    - **XP Gain bar**
-    - Shows progress inside your current level computed from **Raw Total XP**.
-    - **Debt does NOT move this bar.**
-    - **Title Gain bar**
-    - Shows progress toward the next title threshold using the **Raw Level** derived from **Raw Total XP**.
-    - **Debt does NOT move this bar.**
-    - **XP Debt bar**
-    - Shows Total Debt relative to **DEBT_CAP = 100**.
-    - This is display only; it does not change the other bars.
+---
+#### 5) What the 3 Bars Mean (Important UI Rules)
+- **XP Gain bar**
+- Shows progress inside your current level computed from **Raw Total XP**.
+- **Debt does NOT move this bar.**
+- **Title Gain bar**
+- Shows progress toward the next title threshold using the **Raw Level** derived from **Raw Total XP**.
+- **Debt does NOT move this bar.**
+- **XP Debt bar**
+- Shows Total Debt relative to **DEBT_CAP = 100**.
+- This is display only; it does not change the other bars.
 
-    ---
-    #### 6) XP Earnable Actions (Rates Used by the XP Adjust Tool)
-    Per-hour categories:
-    - Admin Work → 0.5 XP per hour
-    - Design Work → 1.0 XP per hour
-    - Gym Workout → 3.0 XP per hour
-    - Jiu Jitsu Training → 4.0 XP per hour
-    - Italian Studying → 2.0 XP per hour
-    - Italian Passive listening → 0.2 XP per hour
-    - Chess - Rated Matches → 2.0 XP per hour
-    - Chess - Study/ Analysis → 1.0 XP per hour
-    - Reading → 1.5 XP per hour
-    - New Skill Learning → 2.4 XP per hour
-    - Personal Challenge Quest → 3.6 XP per hour
-    - Recovery → 1.6 XP per hour
-    - Creative Output → 2.0 XP per hour
-    - General Life Task → 0.8 XP per hour
+---
+#### 6) XP Earnable Actions (Rates Used by the XP Adjust Tool)
+Per-hour categories:
+- Admin Work → 0.5 XP per hour
+- Design Work → 1.0 XP per hour
+- Gym Workout → 3.0 XP per hour
+- Jiu Jitsu Training → 4.0 XP per hour
+- Italian Studying → 2.0 XP per hour
+- Italian Passive listening → 0.2 XP per hour
+- Chess - Rated Matches → 2.0 XP per hour
+- Chess - Study/ Analysis → 1.0 XP per hour
+- Reading → 1.5 XP per hour
+- New Skill Learning → 2.4 XP per hour
+- Personal Challenge Quest → 3.6 XP per hour
+- Recovery → 1.6 XP per hour
+- Creative Output → 2.0 XP per hour
+- General Life Task → 0.8 XP per hour
 
-    Quest completion categories:
-    - Quest 1 → +3.0 XP (Completion)
-    - Quest 2 → +2.0 XP (Completion)
-    - Quest 3 → +1.0 XP (Completion)
+Quest completion categories:
+- Quest 1 → +3.0 XP (Completion)
+- Quest 2 → +2.0 XP (Completion)
+- Quest 3 → +1.0 XP (Completion)
 
-    Streak categories:
-    - Chess Streak → +1.0 XP
-    - Italian Streak → +1.0 XP
-    - Gym Streak → +1.0 XP
-    - Jiu Jitsu Streak → +1.0 XP
-    - Eating Healthy → +1.0 XP
-    - Meet Hydration target → +1.0 XP
+Streak categories:
+- Chess Streak → +1.0 XP
+- Italian Streak → +1.0 XP
+- Gym Streak → +1.0 XP
+- Jiu Jitsu Streak → +1.0 XP
+- Eating Healthy → +1.0 XP
+- Meet Hydration target → +1.0 XP
 
-    ---
-    #### 7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)
-    Normal debt categories (each Add applies the listed amount):
-    - Skip Training → 2.0 XP debt
-    - Junk Eating → 2.0 XP debt
-    - Drug Use → 5.0 XP debt
-    - Blackout Drunk → 3.0 XP debt
-    - Reckless Driving → 4.0 XP debt
-    - Start Fight → 3.0 XP debt
-    - Doomscrolling → 1.5 XP debt
-    - Miss Work → 4.0 XP debt
-    - Impulsive Spend → 2.5 XP debt
-    - Malicious Deceit → 2.0 XP debt
-    - Break Oath → 6.0 XP debt
-    - All Nighter → 2.0 XP debt
-    - Avoid Duty → 2.0 XP debt
-    - Ignore Injury → 2.5 XP debt
-    - Miss Hydration → 1.0 XP debt
-    - Sleep Collapse → 2.0 XP debt
-    - Ghost Obligation → 3.5 XP debt
-    - Ego Decisions → 2.0 XP debt
-    - No Logging → 1.0 XP debt
-    - Message Pile → 1.5 XP debt
-    - Quest Miss → 3.0 XP debt *(manual judgement; the system does not enforce conditions)*
+---
+#### 7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)
+Normal debt categories (each Add applies the listed amount):
+- Skip Training → 2.0 XP debt
+- Junk Eating → 2.0 XP debt
+- Drug Use → 5.0 XP debt
+- Blackout Drunk → 3.0 XP debt
+- Reckless Driving → 4.0 XP debt
+- Start Fight → 3.0 XP debt
+- Doomscrolling → 1.5 XP debt
+- Miss Work → 4.0 XP debt
+- Impulsive Spend → 2.5 XP debt
+- Malicious Deceit → 2.0 XP debt
+- Break Oath → 6.0 XP debt
+- All Nighter → 2.0 XP debt
+- Avoid Duty → 2.0 XP debt
+- Ignore Injury → 2.5 XP debt
+- Miss Hydration → 1.0 XP debt
+- Sleep Collapse → 2.0 XP debt
+- Ghost Obligation → 3.5 XP debt
+- Ego Decisions → 2.0 XP debt
+- No Logging → 1.0 XP debt
+- Message Pile → 1.5 XP debt
+- Quest Miss → 3.0 XP debt *(manual judgement; the system does not enforce conditions)*
 
-    Oath debt categories (each Add applies **+6.0 XP debt**):
-    - Oath: No Cheating
-    - Oath: No Betrayal of Trust
-    - Oath: No Stealing
-    - Oath: No Harm Defenseless
-    - Oath: No Malicious Exploit
-    - Oath: Honor Commitments
-    - Oath: Compete w/ Integrity
-    - Oath: Accountability
-    - Oath: No Sabotage Others
+Oath debt categories (each Add applies **+6.0 XP debt**):
+- Oath: No Cheating
+- Oath: No Betrayal of Trust
+- Oath: No Stealing
+- Oath: No Harm Defenseless
+- Oath: No Malicious Exploit
+- Oath: Honor Commitments
+- Oath: Compete w/ Integrity
+- Oath: Accountability
+- Oath: No Sabotage Others
 
-    **Important:** The system currently allows both **Break Oath** and individual **Oath: ...** categories to be used. Avoid double-penalizing unless you intentionally want that.
+**Important:** The system currently allows both **Break Oath** and individual **Oath: ...** categories to be used. Avoid double-penalizing unless you intentionally want that.
 
-    ---
-    #### 8) Stats (Actual Rules)
-    - Stats are stored under: Physical, Mental, Social, Skill.
-    - Stats are clamped to **0–100**.
-    - The Adjust Stats tool changes values by **±1** per click.
+---
+#### 8) Stats (Actual Rules)
+- Stats are stored under: Physical, Mental, Social, Skill.
+- Stats are clamped to **0–100**.
+- The Adjust Stats tool changes values by **±1** per click.
 
-    ---
-    #### 9) Coin Economy (Design Only)
-    - £1 = 1 Coin
-    - £180 = 180 Coins
-    - £600/week = 600 Coins/week
-    - Coins are **not implemented** in the current code.
-    
-    ---
-    #### 10) Stats Meaning Scale (Design Lore)
-    - **-100** → extreme impairment / minimal motor-cognitive function
-    - **-50** → far below average adult
-    - **-40 to -10** → below-average adult variation band
-    - **0** → average untrained adult male baseline
-    - **+50** → trained competitive amateur
-    - **+65** → advanced regional amateur competitor
-    - **+80** → national competitor
-    - **+95** → elite international competitor
-    - **100** → best verified human performance
-    - Negative stats are **not active in code** unless range is expanded
+---
+#### 9) Coin Economy (Design Only)
+- £1 = 1 Coin
+- £180 = 180 Coins
+- £600/week = 600 Coins/week
+- Coins are **not implemented** in the current code.
+---
+#### 10) Stats Meaning Scale (Design Lore)
+- **-100** → extreme impairment / minimal motor-cognitive function
+- **-50** → far below average adult
+- **-40 to -10** → below-average adult variation band
+- **0** → average untrained adult male baseline
+- **+50** → trained competitive amateur
+- **+65** → advanced regional amateur competitor
+- **+80** → national competitor
+- **+95** → elite international competitor
+- **100** → best verified human performance
+- Negative stats are **not active in code** unless range is expanded
 
-    ---
-    #### 11) How to Measure Stats (Reference Benchmarks)
-    **Physical**
-    - **PUSH** → Max push-up test *(avg 25 reps)*
-    - **PULL** → Max pull-up test *(avg 2 reps)*
-    - **SPD** → 100m sprint test *(avg 16.5s)*
-    - **STM** → 5km run test *(avg 35 min)*
-    - **DUR** → Recovery benchmark after stress tests
-    - **BAL** → Single-leg stand test *(avg 45 sec)*
-    - **FLX** → Sit-and-reach test *(avg 30 cm)*
-    - **RFLX** → Visual reaction time *(avg 230 ms)*
-    - **POW** → Power output benchmark *(e.g., medicine ball throw distance)*
+---
+#### 11) How to Measure Stats (Reference Benchmarks)
+**Physical**
+- **PUSH** → Max push-up test *(avg 25 reps)*
+- **PULL** → Max pull-up test *(avg 2 reps)*
+- **SPD** → 100m sprint test *(avg 16.5s)*
+- **STM** → 5km run test *(avg 35 min)*
+- **DUR** → Recovery benchmark after stress tests
+- **BAL** → Single-leg stand test *(avg 45 sec)*
+- **FLX** → Sit-and-reach test *(avg 30 cm)*
+- **RFLX** → Visual reaction time *(avg 230 ms)*
+- **POW** → Power output benchmark *(e.g., medicine ball throw distance)*
 
-    **Mental**
-    - **LRN** → Recall test after short structured learning
-    - **LOG** → Logic benchmark *(e.g., 20-question reasoning test)*
-    - **MEM** → Digit or item span recall benchmark
-    - **STRAT** → Scenario planning depth benchmark
-    - **FOCUS** → Continuous attention benchmark test
-    - **CREAT** → Originality or idea-generation benchmark
-    - **AWARE** → Observation & environment recall test
-    - **JUDG** → Scenario decision-quality scoring
-    - **CALM** → Accuracy + heart-rate under pressure
+**Mental**
+- **LRN** → Recall test after short structured learning
+- **LOG** → Logic benchmark *(e.g., 20-question reasoning test)*
+- **MEM** → Digit or item span recall benchmark
+- **STRAT** → Scenario planning depth benchmark
+- **FOCUS** → Continuous attention benchmark test
+- **CREAT** → Originality or idea-generation benchmark
+- **AWARE** → Observation & environment recall test
+- **JUDG** → Scenario decision-quality scoring
+- **CALM** → Accuracy + heart-rate under pressure
 
-    **Social**
-    - **SOC** → Social initiation & comfort benchmarks
-    - **LEAD** → Responsibility & group direction audit
-    - **NEG** → Negotiation/persuasion scenario benchmark
-    - **COM** → Explanation clarity & articulation scoring
-    - **EMP** → Emotion recognition & EQ benchmark
-    - **PRES** → Posture & body-language presence audit
+**Social**
+- **SOC** → Social initiation & comfort benchmarks
+- **LEAD** → Responsibility & group direction audit
+- **NEG** → Negotiation/persuasion scenario benchmark
+- **COM** → Explanation clarity & articulation scoring
+- **EMP** → Emotion recognition & EQ benchmark
+- **PRES** → Posture & body-language presence audit
 
-    **Skill**
-    - **CHESS** → Rated match benchmark *(e.g., 10-game rating avg)*
-    - **ITALIAN** → A1 assessment benchmark *(reading/speaking/comprehension)*
-    - **JIU-JITSU** → Belt rank or coached evaluation
+**Skill**
+- **CHESS** → Rated match benchmark *(e.g., 10-game rating avg)*
+- **ITALIAN** → A1 assessment benchmark *(reading/speaking/comprehension)*
+- **JIU-JITSU** → Belt rank or coached evaluation
 
-    ---
-    #### 12) System Constraints (Mechanics Do Not Auto-Trigger)
-    - Stats are clamped to **0..100**
-    - Coins are **not implemented**
-    - Levels use **floored integer XP**
-    - Rulebook text does **not activate mechanics** without implemented logic
-    
-    """
-
-        # Render rulebook text
+---
+#### 12) System Constraints (Mechanics Do Not Auto-Trigger)
+- Stats are clamped to **0..100**
+- Coins are **not implemented**
+- Levels use **floored integer XP**
+- Rulebook text does **not activate mechanics** without implemented logic
+"""
         st.markdown(textwrap.dedent(rulebook_text).strip())
-
-        # Invisible spacing below panel (optional)
         st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
 
+# ---------- SETTINGS ----------
 with st.expander("⚙️ Settings", expanded=False):
     if st.button("Reset ALL", key="reset_all_btn_bottom"):
         reset_all()
+
 
 
 
