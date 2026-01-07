@@ -21,16 +21,6 @@ def _parse_iso_dt(s):
     except Exception:
         return None
 
-def fmt_log_dt_from_payload(payload):
-    ts = (payload or {}).get("_ts_utc")
-    dt = _parse_iso_dt(ts)
-    if not dt:
-        return "??:?? - ??.??.????"
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    local = dt.astimezone(USER_TZ)
-    return local.strftime("%H:%M - %d.%m.%Y")
-
 def with_ts(p):
     p = dict(p or {})
     p["_ts_utc"] = datetime.now(timezone.utc).isoformat()
@@ -207,6 +197,159 @@ DEFAULT_STATS = {
     "Skill": DEFAULT_SKILL,
 }
 
+# ---------- DAILY QUESTS (RESET @ 00:00 UTC, RANDOMISED) ----------
+import random
+
+QUEST_POOL_1 = [
+    "30 min mobility routine", "100 push-ups across sets", "20 pull-ups across sets",
+    "5 km run under 35 min", "10 x 100m sprints", "30 min shadow boxing",
+    "45 min strength session", "30 min HIIT workout", "15 min grip training",
+    "3 min plank hold", "10 burpees EMOM x 10", "30 min stretch session",
+    "60 min walk outdoors", "20 min core circuit", "5 rounds heavy bag",
+    "50 air squats no break", "30 min yoga flow", "10 mins jump rope",
+    "5 mins ice bath", "8 hours sleep + steps 8k"
+]
+
+QUEST_POOL_2 = [
+    "30 min Italian study", "10 new vocabulary words", "1 grammar topic mastered",
+    "20 min rated chess", "1 opening line studied", "2 puzzles 90%+ accuracy",
+    "1 chess game reviewed", "30 min strategy reading", "20 min logic problems",
+    "15 min memory training", "1 new concept mapped", "25 min deep work block",
+    "1 skill micro-lesson", "10 min passive Italian", "1 chess endgame drill",
+    "5 problems mistake log", "1 debate topic analyzed", "1 YouTube lecture",
+    "1 book chapter notes", "1 mental clarity journal"
+]
+
+QUEST_POOL_3 = [
+    "1 admin task cleared", "1 design output shipped", "1 hard conversation done",
+    "1 deadline honored", "1 error documented + fixed", "1 responsibility audit",
+    "1 real task completed", "1 creative output delivered", "1 email inbox to zero",
+    "1 commitment logged", "1 duty completed", "1 challenge faced, not avoided",
+    "1 meeting prepared for", "1 feedback received + acted", "1 hour no procrastination",
+    "1 health choice logged", "1 plan created + followed", "1 obligation closed",
+    "1 system metric updated", "1 real progress recorded"
+]
+
+def reroll_daily_quests(force: bool = False):
+    """
+    Rerolls Quest 1/2/3 ONLY when:
+    - force=True (user clicked button), OR
+    - no quests exist for today yet (first run of day)
+    """
+    today_utc = datetime.now(timezone.utc).date().isoformat()
+
+    # read meta
+    meta = {}
+    if isinstance(st.session_state.get("xp_values", {}), dict):
+        meta = st.session_state.xp_values.get("__daily_quests__", {}) or {}
+
+    stored_date = meta.get("date_utc")
+    stored_active = meta.get("active", {})
+    if not isinstance(stored_active, dict):
+        stored_active = {}
+
+    should_reroll = force or (stored_date != today_utc) or (not stored_active)
+
+    if not should_reroll:
+        return  # do nothing
+
+    active = {
+        "Quest 1": random.choice(QUEST_POOL_1),
+        "Quest 2": random.choice(QUEST_POOL_2),
+        "Quest 3": random.choice(QUEST_POOL_3),
+    }
+    completed = {k: False for k in active.keys()}
+
+    # write into session
+    st.session_state.daily_quests = {
+        "date_utc": today_utc,
+        "active": active,
+        "completed": completed,
+    }
+
+    # write into meta immediately so reruns don't reroll
+    if isinstance(st.session_state.get("xp_values", {}), dict):
+        st.session_state.xp_values["__daily_quests__"] = {
+            "date_utc": today_utc,
+            "active": active,
+            "completed": completed,
+        }
+
+def ensure_daily_quests_in_session_from_meta():
+    """
+    Loads quests from meta/session.
+    Does NOT randomise except via reroll_daily_quests().
+    """
+    today_utc = datetime.now(timezone.utc).date().isoformat()
+
+    # If we already have today's daily_quests in session, keep them.
+    existing = st.session_state.get("daily_quests")
+    if isinstance(existing, dict) and existing.get("date_utc") == today_utc and isinstance(existing.get("active"), dict):
+        return
+
+    # Otherwise load from meta
+    meta = {}
+    if isinstance(st.session_state.get("xp_values", {}), dict):
+        meta = st.session_state.xp_values.get("__daily_quests__", {}) or {}
+
+    stored_date = meta.get("date_utc")
+    stored_active = meta.get("active", {})
+    stored_completed = meta.get("completed", {})
+
+    if not isinstance(stored_active, dict):
+        stored_active = {}
+    if not isinstance(stored_completed, dict):
+        stored_completed = {}
+
+    # If it's a new day OR nothing exists yet, create once (not every rerun)
+    if stored_date != today_utc or not stored_active:
+        reroll_daily_quests(force=True)
+        return
+
+    # Otherwise just load
+    active = {
+        "Quest 1": str(stored_active.get("Quest 1", "")),
+        "Quest 2": str(stored_active.get("Quest 2", "")),
+        "Quest 3": str(stored_active.get("Quest 3", "")),
+    }
+    completed = {k: bool(stored_completed.get(k, False)) for k in active.keys()}
+
+    st.session_state.daily_quests = {
+        "date_utc": today_utc,
+        "active": active,
+        "completed": completed,
+    }
+
+def write_daily_quests_to_meta_before_save():
+    # Persist daily quests into xp_values meta
+    if "daily_quests" not in st.session_state:
+        return
+    if not isinstance(st.session_state.get("xp_values", {}), dict):
+        return
+
+    dq = st.session_state.daily_quests or {}
+    active = dq.get("active", {})
+    completed = dq.get("completed", {})
+
+    if not isinstance(active, dict):
+        active = {}
+    if not isinstance(completed, dict):
+        completed = {}
+
+    st.session_state.xp_values["__daily_quests__"] = {
+        "date_utc": dq.get("date_utc"),
+        "active": {
+            "Quest 1": str(active.get("Quest 1", "")),
+            "Quest 2": str(active.get("Quest 2", "")),
+            "Quest 3": str(active.get("Quest 3", "")),
+        },
+        "completed": {
+            "Quest 1": bool(completed.get("Quest 1", False)),
+            "Quest 2": bool(completed.get("Quest 2", False)),
+            "Quest 3": bool(completed.get("Quest 3", False)),
+        },
+    }
+
 # ---------- HELPERS ----------
 def fmt_xp(x: float, max_decimals: int = 2) -> str:
     try:
@@ -220,7 +363,7 @@ def fmt_log_dt_from_payload(payload: dict) -> str:
     ts = (payload or {}).get("_ts_utc")
     dt = _parse_iso_dt(ts)
     if not dt:
-        return ""
+        return "??:?? - ??.??.????"
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     local = dt.astimezone(USER_TZ)
@@ -498,14 +641,16 @@ def ensure_stats_in_session_from_meta():
 
 def write_stats_to_meta_before_save():
     # store stats inside xp_values meta to persist without changing DB schema
-    if "stats" not in st.session_state:
-        return
-    st.session_state.xp_values["__stats__"] = {
-        "Physical": st.session_state.stats.get("Physical", {}).copy(),
-        "Mental": st.session_state.stats.get("Mental", {}).copy(),
-        "Social": st.session_state.stats.get("Social", {}).copy(),
-        "Skill": st.session_state.stats.get("Skill", {}).copy(),
-    }
+    if "stats" in st.session_state and isinstance(st.session_state.get("xp_values", {}), dict):
+        st.session_state.xp_values["__stats__"] = {
+            "Physical": st.session_state.stats.get("Physical", {}).copy(),
+            "Mental": st.session_state.stats.get("Mental", {}).copy(),
+            "Social": st.session_state.stats.get("Social", {}).copy(),
+            "Skill": st.session_state.stats.get("Skill", {}).copy(),
+        }
+
+    # also persist daily quests
+    write_daily_quests_to_meta_before_save()
 
 def save_all(event_type=None, payload=None, include_snapshot=False):
     write_stats_to_meta_before_save()
@@ -565,18 +710,51 @@ def save_all(event_type=None, payload=None, include_snapshot=False):
     except Exception as e:
         st.error(f"Cloud save failed: {e}")
 
+def _preserve_meta_keys(d: dict) -> dict:
+    """Keep keys like __daily_quests__, __stats__, __last_derived__ etc."""
+    d = d or {}
+    return {k: v for k, v in d.items() if isinstance(k, str) and k.startswith("__")}
 
-def reset_all():
-    st.session_state.xp_values = DEFAULT_XP_VALUES.copy()
-    st.session_state.debt_values = DEFAULT_DEBT_VALUES.copy()
-    st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+def reset_xp():
+    # Reset ONLY XP categories; preserve meta keys inside xp_values
+    meta = _preserve_meta_keys(st.session_state.get("xp_values", {}))
+    st.session_state.xp_values = {**DEFAULT_XP_VALUES.copy(), **meta}
+
     save_all(
-        event_type="reset",
-        payload={"reason": "user_clicked_reset_all"},
+        event_type="reset_xp",
+        payload={"reason": "user_clicked_reset_xp"},
         include_snapshot=True,
     )
     st.rerun()
 
+def reset_debt():
+    # Reset ONLY debt categories; preserve meta keys if any exist
+    meta = _preserve_meta_keys(st.session_state.get("debt_values", {}))
+    st.session_state.debt_values = {**DEFAULT_DEBT_VALUES.copy(), **meta}
+
+    save_all(
+        event_type="reset_debt",
+        payload={"reason": "user_clicked_reset_debt"},
+        include_snapshot=True,
+    )
+    st.rerun()
+
+def reset_stats_group(group_key: str):
+    if "stats" not in st.session_state or not isinstance(st.session_state.stats, dict):
+        st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
+
+    if group_key not in DEFAULT_STATS:
+        st.error(f"Unknown stats group: {group_key}")
+        return
+
+    st.session_state.stats[group_key] = DEFAULT_STATS[group_key].copy()
+
+    save_all(
+        event_type="reset_stats",
+        payload={"reason": "user_clicked_reset_stats", "group": group_key},
+        include_snapshot=True,
+    )
+    st.rerun()
 
 # ---------- CLOUD INIT ----------
 if "xp_values" not in st.session_state or "debt_values" not in st.session_state:
@@ -814,6 +992,55 @@ st.markdown(
         font-weight: 950 !important;
     }
 
+    .dq-box{
+        width:22px;
+        height:22px;
+        border-radius:6px;
+        border:2px solid rgba(0,220,255,0.75);
+        box-shadow: 0 0 12px rgba(0,220,255,0.45);
+        flex: 0 0 auto;
+    }
+    .dq-box.done{
+        background: linear-gradient(180deg, rgba(0,255,255,0.85), rgba(0,180,255,0.70));
+    }
+    .dq-text{
+        flex: 1 1 auto;
+        font-weight: 900;
+        color: rgba(255,255,255,0.95);
+        text-shadow: 0 0 10px rgba(0,220,255,0.35);
+        line-height: 1.3;
+        font-size: 14px;
+    }
+
+    /* --- SETTINGS: compact layout, no overflow --- */
+    div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"]{
+        gap: 10px !important;                 /* tighter spacing between columns */
+    }
+
+    /* shrink vertical gaps between buttons in Settings */
+    div[data-testid="stExpander"] div[data-testid="stButton"]{
+        margin: 6px 0 !important;
+    }
+    div[data-testid="stExpander"] div[data-testid="stButton"] > button{
+        margin: 0 !important;
+        padding: 8px 10px !important;         /* slightly smaller so two fit more often */
+        min-height: 40px !important;
+        font-size: 13px !important;
+    }
+
+    /* prevent any horizontal scrolling caused by layout glitches */
+    section.main{
+        overflow-x: hidden !important;
+    }
+
+    div[data-testid="stExpander"] div[data-testid="stButton"]{
+        margin: 6px 0 !important;            /* reduce vertical spacing between buttons */
+    }
+
+    div[data-testid="stExpander"] div[data-testid="stButton"] > button{
+        margin: 0 !important;
+    }
+
     @media (max-width: 600px){
         .hud-title{
             font-size: 26px !important;
@@ -955,6 +1182,41 @@ with col_hud:
     )
 
 with col_panel:
+    # ---------- DAILY QUESTS (RIGHT COLUMN, ABOVE MENU) ----------
+    ensure_daily_quests_in_session_from_meta()
+
+    dq = st.session_state.get("daily_quests", {}) or {}
+    active = dq.get("active", {}) or {}
+
+    q1 = html.escape(str(active.get("Quest 1", "")) or "(missing quest)")
+    q2 = html.escape(str(active.get("Quest 2", "")) or "(missing quest)")
+    q3 = html.escape(str(active.get("Quest 3", "")) or "(missing quest)")
+
+    st.markdown(
+        f"""
+        <div class="panel" style="max-width: 440px;">
+          <div class="panel-title">Daily Quests</div>
+
+          <div class="xp-row">
+            <div class="xp-name">Quest 1</div>
+            <div class="xp-val">{q1}</div>
+          </div>
+
+          <div class="xp-row">
+            <div class="xp-name">Quest 2</div>
+            <div class="xp-val">{q2}</div>
+          </div>
+
+          <div class="xp-row" style="border-bottom: none;">
+            <div class="xp-name">Quest 3</div>
+            <div class="xp-val">{q3}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ---------- MENU ----------
     menu_options = [
         "XP Breakdown",
         "XP Wall Debt",
@@ -964,7 +1226,7 @@ with col_panel:
         "Skill Stats",
         "Tools & Gear",
         "Rule Book",
-        "Log",  # <-- needed so the Settings button can navigate without snapping back
+        "Log",
     ]
 
     st.markdown('<div class="menu-header">Menu</div>', unsafe_allow_html=True)
@@ -1220,6 +1482,7 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
+        # default to 50
         limit = st.selectbox("Show last", [50, 100, 200, 500, 1000], index=0, key="log_limit")
 
         logs = []
@@ -1241,7 +1504,6 @@ with col_panel:
                 mode = p.get("mode", "")
                 newv = p.get("new_value", None)
                 gain_word = "Gain" if mode == "Add" else "Loss"
-                # matches your example format; shows new stat level
                 if newv is not None:
                     return f"{ts} - {group} Stats {gain_word} by 1 ({int(newv)}/100)"
                 return f"{ts} - {group} Stats {gain_word} by 1"
@@ -1272,6 +1534,14 @@ with col_panel:
             if event_type == "title_unlocked":
                 t = p.get("title", "")
                 return f"{ts} - New Title Unlocked ({t})"
+
+            if event_type == "daily_quest_complete":
+                q = p.get("quest", "")
+                return f"{ts} - Daily Quest Completed ({q})"
+
+            if event_type == "daily_quest_uncheck":
+                q = p.get("quest", "")
+                return f"{ts} - Daily Quest Unchecked ({q})"
 
             if event_type == "reset":
                 return f"{ts} - Reset"
@@ -1321,6 +1591,7 @@ with col_panel:
         )
 
     elif section == "Rule Book":
+        st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
         rulebook_text = """**Core Rule**
 - XP is progress currency.
 - XP Wall Debt blocks progression.
@@ -1533,8 +1804,38 @@ Oath debt categories (each Add applies **+6.0 XP debt**):
 
 # ---------- SETTINGS ----------
 with st.expander("⚙️ Settings", expanded=False):
-    if st.button("Reset ALL", key="reset_all_btn_bottom"):
-        reset_all()
+    if st.button("Randomise Daily Quests", key="reroll_daily_quests_btn"):
+        reroll_daily_quests(force=True)
+        save_all(
+            event_type="daily_quests_rerolled",
+            payload={"date_utc": datetime.now(timezone.utc).date().isoformat()},
+            include_snapshot=False,
+        )
+        st.rerun()
+
+    c1, c2 = st.columns(2, gap="small")
+    with c1:
+        if st.button("Reset XP", key="reset_xp_btn"):
+            reset_xp()
+    with c2:
+        if st.button("Reset Debt", key="reset_debt_btn"):
+            reset_debt()
+
+    c3, c4 = st.columns(2, gap="small")
+    with c3:
+        if st.button("Reset Physical Stats", key="reset_phys_btn"):
+            reset_stats_group("Physical")
+    with c4:
+        if st.button("Reset Mental Stats", key="reset_ment_btn"):
+            reset_stats_group("Mental")
+
+    c5, c6 = st.columns(2, gap="small")
+    with c5:
+        if st.button("Reset Social Stats", key="reset_soc_btn"):
+            reset_stats_group("Social")
+    with c6:
+        if st.button("Reset Skill Stats", key="reset_skill_btn"):
+            reset_stats_group("Skill")
 
 
 
