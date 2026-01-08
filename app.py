@@ -5,10 +5,77 @@ import textwrap
 import html
 import re
 import random
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 st.set_page_config(page_title="Player HUD", layout="wide")
+
+# ---------- PIN GATE ----------
+APP_PIN = "681"  # NOTE: this is not real security if shipped to users.
+
+if "authed" not in st.session_state:
+    st.session_state.authed = False
+if "welcomed" not in st.session_state:
+    st.session_state.welcomed = False
+
+
+def pin_gate():
+    st.markdown(
+        """
+        <div style="padding:22px; border-radius:14px; background: rgba(0,3,20,0.60);
+                    border: 2px solid rgba(0,220,255,0.55);
+                    box-shadow: 0 0 26px rgba(0,220,255,0.7), inset 0 0 16px rgba(0,220,255,0.25);">
+          <div style="font-size:28px; font-weight:950; color:white; text-shadow: 0 0 18px rgba(0,220,255,0.85);">
+            Loading...
+          </div>
+          <div style="margin-top:10px; font-size:14px; font-weight:900; opacity:0.9;">
+            Enter your pin to enter
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    pin = st.text_input("PIN", type="password", label_visibility="collapsed", key="pin_input")
+    go = st.button("Enter", key="pin_enter_btn")
+
+    if go:
+        if str(pin).strip() == APP_PIN:
+            st.session_state.authed = True
+            st.session_state.welcomed = False
+            st.session_state.pin_input = ""  # clear input
+            st.rerun()
+        else:
+            st.error("Incorrect PIN.")
+
+
+def welcome_screen():
+    st.markdown(
+        """
+        <div style="padding:22px; border-radius:14px; background: rgba(0,3,20,0.60);
+                    border: 2px solid rgba(0,220,255,0.55);
+                    box-shadow: 0 0 26px rgba(0,220,255,0.7), inset 0 0 16px rgba(0,220,255,0.25);">
+          <div style="font-size:26px; font-weight:950; color:white; text-shadow: 0 0 18px rgba(0,220,255,0.85);">
+            Welcome Jackson Barkworth
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # brief pause then proceed
+    time.sleep(0.9)
+    st.session_state.welcomed = True
+    st.rerun()
+
+    # Gate the entire app BEFORE any cloud load / heavy init
+    if not st.session_state.authed:
+        pin_gate()
+        st.stop()
+
+    if not st.session_state.welcomed:
+        welcome_screen()
+        st.stop()
 
 # ---------- TIMEZONE ----------
 USER_TZ = ZoneInfo("Europe/London")
@@ -1849,5 +1916,7 @@ with st.expander("⚙️ Settings", expanded=False):
         if st.button("Reset Skill Stats", key="reset_skill_btn"):
             reset_stats_group("Skill")
 
+
             
+
 
