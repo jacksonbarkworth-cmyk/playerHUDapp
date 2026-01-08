@@ -1530,61 +1530,32 @@ with col_hud:
 
     st.markdown(
         f"""
-    <div class="hud-box">
-      <div style="display:flex; align-items:flex-start; gap:12px;">
-        <div style="flex: 1 1 auto; min-width:0;">
-          <div style="font-weight:950; font-size:18px; letter-spacing:0.4px; color:rgba(255,255,255,0.98);">
-            Jackson Barkworth <span style="font-weight:800; color:rgba(180,255,255,0.92);">— {html.escape(title)}</span>
-          </div>
-          <div style="margin-top:4px; font-size:12.5px; color:rgba(255,255,255,0.70); font-weight:650;">
-            Region: United Kingdom
-          </div>
-        </div>
-        <div class="hud-avatar" style="margin-left:auto; align-self:flex-start;">JB</div>
-      </div>
-        <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-            <div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Age</div>
-            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">22</div>
-            </div>
-            <div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">DOB</div>
-            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">06/11/2003</div>
-            </div>
-            <div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Height</div>
-            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">5'9</div>
-            </div>
-            <div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Weight</div>
-            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">14 Stone</div>
-            </div>
-        </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div class="hud-box" style="max-width: 520px;">
 
-    st.markdown(
-        f"""
-        <div class="progress-box">
-        <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline;">
-            <div style="font-weight:900; color:rgba(255,255,255,0.85);">Level</div>
-            <div style="font-weight:950; color:rgba(255,255,255,0.98); font-size:16px;">{level}</div>
+        <!-- HEADER -->
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+            <div style="flex:1 1 auto; min-width:0;">
+            <div style="font-weight:950; font-size:18px; letter-spacing:0.4px; color:rgba(255,255,255,0.98); line-height:1.2;">
+                Jackson Barkworth <span style="font-weight:800; color:rgba(180,255,255,0.92);">— {html.escape(title)}</span>
+            </div>
+            <div style="margin-top:4px; font-size:12.5px; color:rgba(255,255,255,0.70); font-weight:650; line-height:1.2;">
+                Region: United Kingdom
+            </div>
+            </div>
+            <div class="hud-avatar" style="margin-left:auto; align-self:flex-start;">JB</div>
         </div>
 
-        <div style="display:flex; justify-content:space-between; gap:12px; margin-top:6px; align-items:baseline;">
-            <div style="font-weight:900; color:rgba(255,255,255,0.85);">XP</div>
-            <div style="font-weight:950; color:rgba(180,255,255,0.95); text-shadow: 0 0 10px rgba(0,220,255,0.35);">
-            {fmt_xp(xp_total)}
+        <div style="height:12px;"></div>
+
+        <!-- LEVEL + XP ON SAME LINE (no duplicate novice/title) -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; font-size:16px; font-weight:950;">
+            <div>Level {level}</div>
+            <div style="color:rgba(180,255,255,0.95); text-shadow:0 0 10px rgba(0,220,255,0.35);">
+            XP {fmt_xp(xp_total)}
             </div>
         </div>
 
-        <div style="display:flex; justify-content:space-between; gap:12px; margin-top:6px; align-items:baseline;">
-            <div style="font-weight:900; color:rgba(255,255,255,0.85);">Title</div>
-            <div style="font-weight:950; color:rgba(255,255,255,0.98);">{html.escape(title)}</div>
-        </div>
-
+        <!-- PROGRESSION BARS -->
         <div class="bar-label">XP Gain</div>
         <div class="glow-bar">
             <div class="glow-bar-fill" style="width:{xp_pct}%;"></div>
@@ -1602,6 +1573,35 @@ with col_hud:
             <div class="glow-bar-fill-red" style="width:{debt_pct}%;"></div>
             <div class="glow-bar-text glow-bar-text-red">{fmt_xp(debt_total)}/{fmt_xp(DEBT_CAP)}</div>
         </div>
+
+        <div style="height:14px;"></div>
+
+        <!-- DIVIDER -->
+        <div style="
+            height:1px;
+            background: linear-gradient(90deg, rgba(0,220,255,0.05), rgba(0,220,255,0.35), rgba(0,220,255,0.05));
+            margin: 14px 0 12px 0;"></div>
+
+        <!-- DETAILS GRID (at the bottom) -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Age</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">22</div>
+            </div>
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">DOB</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">06/11/2003</div>
+            </div>
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Height</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">5'9</div>
+            </div>
+            <div>
+            <div style="font-size:12px; color:rgba(255,255,255,0.65); font-weight:650;">Weight</div>
+            <div style="font-size:14px; font-weight:950; color:rgba(255,255,255,0.95);">14 Stone</div>
+            </div>
+        </div>
+
         </div>
         """,
         unsafe_allow_html=True,
@@ -2105,6 +2105,7 @@ with st.expander("⚙️ Settings", expanded=False):
 
 
             
+
 
 
 
