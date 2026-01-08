@@ -4,6 +4,7 @@ import requests
 import textwrap
 import html
 import re
+import random
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -88,7 +89,6 @@ XP_STREAK = {
     "Meet Hydration target": 1.0,
 }
 
-
 def xp_delta_from_choice(category: str, choice: str) -> float:
     if category in XP_PER_HOUR:
         rate = float(XP_PER_HOUR[category])
@@ -102,7 +102,6 @@ def xp_delta_from_choice(category: str, choice: str) -> float:
     if category in XP_STREAK:
         return float(XP_STREAK[category])
     return 0.0
-
 
 # ---------- XP WALL DEBT DEFAULTS (SHORT NAMES, 3 WORDS MAX) ----------
 OATH_KEYS = [
@@ -186,10 +185,10 @@ DEBT_PENALTY = {
 }
 
 # ---------- STATS DEFAULTS ----------
-DEFAULT_PHYSICAL = {"PUSH": 0, "PULL": 0, "SPD": 0, "STM": 0, "DUR": 0, "BAL": 0, "FLX": 0, "RFLX": 0, "POW": 0}
-DEFAULT_MENTAL = {"LRN": 0, "LOG": 0, "MEM": 0, "STRAT": 0, "FOCUS": 0, "CREAT": 0, "AWARE": 0, "JUDG": 0, "CALM": 0}
-DEFAULT_SOCIAL = {"SOC": 0, "LEAD": 0, "NEG": 0, "COM": 0, "EMP": 0, "PRES": 0}
-DEFAULT_SKILL = {"CHESS": 0, "ITALIAN": 0, "JIUJITSU": 0}
+DEFAULT_PHYSICAL = {"PUSH": 1, "PULL": 1, "SPD": 1, "STM": 1, "DUR": 1, "BAL": 1, "FLX": 1, "RFLX": 1, "POW": 1}
+DEFAULT_MENTAL   = {"LRN": 1, "LOG": 1, "MEM": 1, "STRAT": 1, "FOCUS": 1, "CREAT": 1, "AWARE": 1, "JUDG": 1, "CALM": 1}
+DEFAULT_SOCIAL   = {"SOC": 1, "LEAD": 1, "NEG": 1, "COM": 1, "EMP": 1, "PRES": 1}
+DEFAULT_SKILL    = {"CHESS": 1, "ITALIAN": 1, "JIUJITSU": 1, "SKATE": 1}
 
 DEFAULT_STATS = {
     "Physical": DEFAULT_PHYSICAL,
@@ -199,36 +198,96 @@ DEFAULT_STATS = {
 }
 
 # ---------- DAILY QUESTS (RESET @ 00:00 UTC, RANDOMISED) ----------
-import random
-
+# Pool 1 = Physical tests alignment (PUSH/PULL/SPD/STM/DUR/BAL/FLX/RFLX/POW)
 QUEST_POOL_1 = [
-    "30 min mobility routine", "100 push-ups across sets", "20 pull-ups across sets",
-    "5 km run under 35 min", "10 x 100m sprints", "30 min shadow boxing",
-    "45 min strength session", "30 min HIIT workout", "15 min grip training",
-    "3 min plank hold", "10 burpees EMOM x 10", "30 min stretch session",
-    "60 min walk outdoors", "20 min core circuit", "5 rounds heavy bag",
-    "50 air squats no break", "30 min yoga flow", "10 mins jump rope",
-    "5 mins ice bath", "8 hours sleep + steps 8k"
+    # PUSH
+    "PUSH test: max strict push-ups",
+    "PUSH practice: 5 sets strict push-ups",
+    "PUSH volume: 50 strict push-ups total",
+
+    # PULL
+    "PULL test: dead-hang max time",
+    "PULL practice: 5 x dead-hang",
+    "PULL practice: 3 x scap pull-ups + 3 x 20s hang",
+
+    # SPD
+    "SPD test: 3 x 20m sprint",
+    "SPD technique: 6 x 20m accelerations",
+    "SPD mechanics: A-skips + wall drives 10 min",
+
+    # STM
+    "STM test: 1.5km run time trial",
+    "STM builder: 12 min steady run",
+    "STM intervals: 6 x 200m fast",
+
+    # DUR
+    "DUR test: farmer hold 20kg/hand max time",
+    "DUR practice: 4 x 40s farmer hold/carry",
+    "DUR grip: towel hang 3 x max",
+
+    # BAL
+    "BAL test: single-leg stand eyes open",
+    "BAL practice: 3 x 45s single-leg stand each leg",
+    "BAL practice: single-leg RDL balance drill 3 x 8/leg",
+
+    # FLX
+    "FLX test: toe-touch reach",
+    "FLX routine: 10 min hamstring + calf stretch",
+    "FLX routine: 8 min hip hinge mobility + toe-touch re-test",
+
+    # RFLX
+    "RFLX test: ruler drop catch",
+    "RFLX practice: 10 ruler drops each hand",
+    "RFLX drill: 5 min reaction taps",
+
+    # POW
+    "POW test: standing broad jump",
+    "POW practice: 8 broad jumps",
+    "POW drill: 3 x 6 squat jumps",
 ]
 
 QUEST_POOL_2 = [
-    "30 min Italian study", "10 new vocabulary words", "1 grammar topic mastered",
-    "20 min rated chess", "1 opening line studied", "2 puzzles 90%+ accuracy",
-    "1 chess game reviewed", "30 min strategy reading", "20 min logic problems",
-    "15 min memory training", "1 new concept mapped", "25 min deep work block",
-    "1 skill micro-lesson", "10 min passive Italian", "1 chess endgame drill",
-    "5 problems mistake log", "1 debate topic analyzed", "1 YouTube lecture",
-    "1 book chapter notes", "1 mental clarity journal"
+    "LRN test: learn 30 novel items in 10 min → recall %",
+    "LRN drill: 10 min spaced-recall on 30 items",
+    "LOG test: 8 logic problems in 6 min → accuracy %",
+    "LOG drill: 10 min logic set",
+    "MEM test: read 300 words → 30-min recall %",
+    "MEM drill: 10 min memory practice + delayed recall",
+    "STRAT test: 5 decisions in 10 min → optimal match %",
+    "STRAT drill: 10 min decision review write why optimal",
+    "FOCUS test: 4-min interference task → accuracy %",
+    "FOCUS drill: 10 min deep focus block no switches",
+    "CREAT test: 15 ideas in 5 min → valid % ",
+    "CREAT drill: 8 min idea sprint + 2 min filter",
+    "AWARE test: 15-sec image → 10 inference Qs → accuracy %",
+    "AWARE drill: 10 inference questions from a short scene",
+    "JUDG test: 12 trade-off decisions → optimal match %",
+    "JUDG drill: 10 min trade-off analysis write criteria",
+    "CALM test: 90-sec pressure → HR after",
+    "CALM drill: 8 min downshift breathing + HR check",
 ]
 
 QUEST_POOL_3 = [
-    "1 admin task cleared", "1 design output shipped", "1 hard conversation done",
-    "1 deadline honored", "1 error documented + fixed", "1 responsibility audit",
-    "1 real task completed", "1 creative output delivered", "1 email inbox to zero",
-    "1 commitment logged", "1 duty completed", "1 challenge faced, not avoided",
-    "1 meeting prepared for", "1 feedback received + acted", "1 hour no procrastination",
-    "1 health choice logged", "1 plan created + followed", "1 obligation closed",
-    "1 system metric updated", "1 real progress recorded"
+    # Social
+    "SOC: start 1 conversation with a stranger",
+    "SOC: 2 micro-convos in 5 min",
+    "LEAD: make 1 leadership decision today",
+    "NEG: write 1 negotiation reply using rubric",
+    "COM: explain 1 concept in 60s",
+    "EMP: do 6 emotion inference reps",
+    "PRES: 2-min presence checklist",
+
+    # Skill
+    "CHESS: play 1 rated game",
+    "CHESS: review 1 game find 3 mistakes + 1 fix",
+    "CHESS: do 10 tactics",
+    "ITALIAN: recall + write 10 words",
+    "ITALIAN: 15 min active study + 10-word recall test",
+    "ITALIAN: 10 min speaking practice",
+    "JIUJITSU: 1 session or 60 min drilling",
+    "JIUJITSU: 30 min mobility + 30 min technique study",
+    "SKATE: 1 skating session",
+    "SKATE: 20 min balance/edge drill session",
 ]
 
 def reroll_daily_quests(force: bool = False):
@@ -239,7 +298,6 @@ def reroll_daily_quests(force: bool = False):
     """
     today_utc = datetime.now(timezone.utc).date().isoformat()
 
-    # read meta
     meta = {}
     if isinstance(st.session_state.get("xp_values", {}), dict):
         meta = st.session_state.xp_values.get("__daily_quests__", {}) or {}
@@ -250,9 +308,8 @@ def reroll_daily_quests(force: bool = False):
         stored_active = {}
 
     should_reroll = force or (stored_date != today_utc) or (not stored_active)
-
     if not should_reroll:
-        return  # do nothing
+        return
 
     active = {
         "Quest 1": random.choice(QUEST_POOL_1),
@@ -261,14 +318,12 @@ def reroll_daily_quests(force: bool = False):
     }
     completed = {k: False for k in active.keys()}
 
-    # write into session
     st.session_state.daily_quests = {
         "date_utc": today_utc,
         "active": active,
         "completed": completed,
     }
 
-    # write into meta immediately so reruns don't reroll
     if isinstance(st.session_state.get("xp_values", {}), dict):
         st.session_state.xp_values["__daily_quests__"] = {
             "date_utc": today_utc,
@@ -283,12 +338,10 @@ def ensure_daily_quests_in_session_from_meta():
     """
     today_utc = datetime.now(timezone.utc).date().isoformat()
 
-    # If we already have today's daily_quests in session, keep them.
     existing = st.session_state.get("daily_quests")
     if isinstance(existing, dict) and existing.get("date_utc") == today_utc and isinstance(existing.get("active"), dict):
         return
 
-    # Otherwise load from meta
     meta = {}
     if isinstance(st.session_state.get("xp_values", {}), dict):
         meta = st.session_state.xp_values.get("__daily_quests__", {}) or {}
@@ -302,12 +355,10 @@ def ensure_daily_quests_in_session_from_meta():
     if not isinstance(stored_completed, dict):
         stored_completed = {}
 
-    # If it's a new day OR nothing exists yet, create once (not every rerun)
     if stored_date != today_utc or not stored_active:
         reroll_daily_quests(force=True)
         return
 
-    # Otherwise just load
     active = {
         "Quest 1": str(stored_active.get("Quest 1", "")),
         "Quest 2": str(stored_active.get("Quest 2", "")),
@@ -322,7 +373,6 @@ def ensure_daily_quests_in_session_from_meta():
     }
 
 def write_daily_quests_to_meta_before_save():
-    # Persist daily quests into xp_values meta
     if "daily_quests" not in st.session_state:
         return
     if not isinstance(st.session_state.get("xp_values", {}), dict):
@@ -383,12 +433,10 @@ def coerce_and_align_keep_meta(loaded: dict, defaults: dict) -> dict:
         except Exception:
             out[k] = float(dv)
 
-    # keep meta keys
     for k, v in loaded.items():
         if isinstance(k, str) and k.startswith("__"):
             out[k] = v
     return out
-
 
 def coerce_int_dict(loaded: dict, defaults: dict) -> dict:
     loaded = loaded or {}
@@ -398,21 +446,25 @@ def coerce_int_dict(loaded: dict, defaults: dict) -> dict:
             out[k] = int(loaded.get(k, dv))
         except Exception:
             out[k] = int(dv)
-        out[k] = max(0, min(100, out[k]))
+        out[k] = max(1, min(1000, out[k]))
     return out
-
 
 def apply_xp_with_debt_payment(xp_gain: float) -> float:
     """
     Pays down XP Wall Debt first using earned XP.
     Returns leftover XP after debt is reduced.
     Reduces debt proportionally across categories.
+
+    IMPORTANT:
+    - Only operates on real debt keys (DEFAULT_DEBT_VALUES),
+      never on meta keys like __stats__ etc.
     """
     xp_gain = float(max(0.0, xp_gain))
     if xp_gain <= 0:
         return 0.0
 
-    total_debt = float(sum(st.session_state.debt_values.values()))
+    debt_keys = list(DEFAULT_DEBT_VALUES.keys())
+    total_debt = float(sum(float(st.session_state.debt_values.get(k, 0.0)) for k in debt_keys))
     if total_debt <= 0:
         return xp_gain
 
@@ -420,8 +472,8 @@ def apply_xp_with_debt_payment(xp_gain: float) -> float:
     remaining_pay = pay
 
     # proportional reduction
-    for k, v in list(st.session_state.debt_values.items()):
-        v = float(v)
+    for k in debt_keys:
+        v = float(st.session_state.debt_values.get(k, 0.0))
         if v <= 0 or remaining_pay <= 0:
             continue
         share = (v / total_debt) * pay
@@ -429,12 +481,12 @@ def apply_xp_with_debt_payment(xp_gain: float) -> float:
         st.session_state.debt_values[k] = float(max(0.0, v - reduction))
         remaining_pay -= reduction
 
-    # cleanup
+    # cleanup for float rounding remainder
     if remaining_pay > 1e-6:
-        for k, v in list(st.session_state.debt_values.items()):
+        for k in debt_keys:
             if remaining_pay <= 0:
                 break
-            v = float(v)
+            v = float(st.session_state.debt_values.get(k, 0.0))
             if v <= 0:
                 continue
             reduction = min(v, remaining_pay)
@@ -456,13 +508,8 @@ def rule_md_to_html(md: str) -> str:
 
     def inline_fmt(s: str) -> str:
         s = html.escape(s)
-
-        # **bold**
         s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
-
-        # `code`
         s = re.sub(r"`(.+?)`", r"<code>\1</code>", s)
-
         return s
 
     out = []
@@ -478,7 +525,6 @@ def rule_md_to_html(md: str) -> str:
             out.append('<div class="rb-spacer"></div>')
             continue
 
-        # Subtitle: **Physical**
         sub = re.fullmatch(r"\*\*(.+?)\*\*", line.strip())
         if sub:
             if in_ul:
@@ -487,7 +533,6 @@ def rule_md_to_html(md: str) -> str:
             out.append(f'<div class="rulebox-subtitle">{inline_fmt(sub.group(1))}</div>')
             continue
 
-        # Bullet
         if line.lstrip().startswith("- "):
             if not in_ul:
                 out.append("<ul>")
@@ -496,7 +541,6 @@ def rule_md_to_html(md: str) -> str:
             out.append(f"<li>{inline_fmt(item)}</li>")
             continue
 
-        # Normal paragraph line
         if in_ul:
             out.append("</ul>")
             in_ul = False
@@ -563,7 +607,6 @@ def compute_level(total_xp: float, max_level: int = MAX_LEVEL) -> tuple[int, flo
     xp_in_level = remaining
     return level, xp_in_level, req
 
-
 def compute_derived_state_now() -> dict:
     xp_total_now = float(sum(st.session_state.xp_values[k] for k in DEFAULT_XP_VALUES.keys()))
     debt_total_now = float(sum(st.session_state.debt_values[k] for k in DEFAULT_DEBT_VALUES.keys()))
@@ -587,7 +630,6 @@ def get_prev_derived_state() -> dict:
 def set_prev_derived_state(state: dict):
     if isinstance(st.session_state.get("xp_values", {}), dict):
         st.session_state.xp_values["__last_derived__"] = state
-
 
 # ---------- CLOUD SAVE (SUPABASE) ----------
 CLOUD_ENABLED = (
@@ -667,7 +709,6 @@ if CLOUD_ENABLED:
             last_err = r.text
 
         raise RuntimeError(f"Supabase log load failed: {last_err}")
-        return r.json()
 
 else:
     def cloud_load_state():
@@ -682,29 +723,17 @@ else:
     def cloud_load_logs(limit=500):
         return []
 
-        last_err = None
-        for a in attempts:
-            r = requests.get(url, headers=_SB_HEADERS, params=a["params"], timeout=15)
-            if r.status_code < 400:
-                return r.json()
-            last_err = r.text
-
-        raise RuntimeError(f"Supabase log load failed: {last_err}")
-
 def ensure_stats_in_session_from_meta():
     meta = st.session_state.xp_values.get("__stats__", {}) if isinstance(st.session_state.xp_values, dict) else {}
     if "stats" not in st.session_state:
         st.session_state.stats = {k: v.copy() for k, v in DEFAULT_STATS.items()}
 
-    # load from meta if present
     if isinstance(meta, dict) and meta:
         for group, defaults in DEFAULT_STATS.items():
             loaded_group = meta.get(group, {})
             st.session_state.stats[group] = coerce_int_dict(loaded_group, defaults)
 
-
 def write_stats_to_meta_before_save():
-    # store stats inside xp_values meta to persist without changing DB schema
     if "stats" in st.session_state and isinstance(st.session_state.get("xp_values", {}), dict):
         st.session_state.xp_values["__stats__"] = {
             "Physical": st.session_state.stats.get("Physical", {}).copy(),
@@ -713,7 +742,6 @@ def write_stats_to_meta_before_save():
             "Skill": st.session_state.stats.get("Skill", {}).copy(),
         }
 
-    # also persist daily quests
     write_daily_quests_to_meta_before_save()
 
 def save_all(event_type=None, payload=None, include_snapshot=False):
@@ -750,25 +778,7 @@ def save_all(event_type=None, payload=None, include_snapshot=False):
     # store derived state in meta BEFORE saving
     set_prev_derived_state(now)
 
-    # 2) save snapshot
-    try:
-        cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-    except Exception as e:
-        st.error(f"Cloud save failed: {e}")
-
-    # store last derived state in meta
-    set_prev_derived_state(now)
-
-    # 2) save current snapshot
-    try:
-        cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
-    except Exception as e:
-        st.error(f"Cloud save failed: {e}")
-
-    # update last derived state (stored in meta) BEFORE saving state
-    set_prev_derived_state(now)
-
-    # 2) save current snapshot
+    # 2) save snapshot (ONCE)
     try:
         cloud_save_state(st.session_state.xp_values, st.session_state.debt_values)
     except Exception as e:
@@ -780,7 +790,6 @@ def _preserve_meta_keys(d: dict) -> dict:
     return {k: v for k, v in d.items() if isinstance(k, str) and k.startswith("__")}
 
 def reset_xp():
-    # Reset ONLY XP categories; preserve meta keys inside xp_values
     meta = _preserve_meta_keys(st.session_state.get("xp_values", {}))
     st.session_state.xp_values = {**DEFAULT_XP_VALUES.copy(), **meta}
 
@@ -792,7 +801,6 @@ def reset_xp():
     st.rerun()
 
 def reset_debt():
-    # Reset ONLY debt categories; preserve meta keys if any exist
     meta = _preserve_meta_keys(st.session_state.get("debt_values", {}))
     st.session_state.debt_values = {**DEFAULT_DEBT_VALUES.copy(), **meta}
 
@@ -1078,34 +1086,24 @@ st.markdown(
 
     /* --- SETTINGS: compact layout, no overflow --- */
     div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"]{
-        gap: 10px !important;                 /* tighter spacing between columns */
+        gap: 10px !important;
     }
 
-    /* shrink vertical gaps between buttons in Settings */
     div[data-testid="stExpander"] div[data-testid="stButton"]{
         margin: 6px 0 !important;
     }
     div[data-testid="stExpander"] div[data-testid="stButton"] > button{
         margin: 0 !important;
-        padding: 8px 10px !important;         /* slightly smaller so two fit more often */
+        padding: 8px 10px !important;
         min-height: 40px !important;
         font-size: 13px !important;
     }
 
-    /* prevent any horizontal scrolling caused by layout glitches */
     section.main{
         overflow-x: hidden !important;
     }
 
-    div[data-testid="stExpander"] div[data-testid="stButton"]{
-        margin: 6px 0 !important;            /* reduce vertical spacing between buttons */
-    }
-
-    div[data-testid="stExpander"] div[data-testid="stButton"] > button{
-        margin: 0 !important;
-    }
-
-        /* HUD avatar circle */
+    /* HUD avatar circle */
     .hud-avatar{
         width:42px;
         height:42px;
@@ -1120,40 +1118,6 @@ st.markdown(
         font-weight:950;
         flex: 0 0 auto;
     }
-    /* Stat labels (Level / XP / Title) */
-    .hud-stat-label {
-        font-size: 13px;
-        font-weight: 800;
-        opacity: 0.72;
-        letter-spacing: 0.5px;
-        margin-bottom: 2px;
-    }
-
-    /* Big numbers (Level value) */
-    .hud-stat-big {
-        font-size: 28px;
-        font-weight: 950;
-        color: rgba(180,255,255,0.96);
-        text-shadow: 0 0 14px rgba(0,255,255,0.6);
-        line-height: 1.1;
-    }
-
-    /* Medium values (XP total) */
-    .hud-stat-med {
-        font-size: 20px;
-        font-weight: 900;
-        color: rgba(180,255,255,0.92);
-        text-shadow: 0 0 10px rgba(0,220,255,0.4);
-        line-height: 1.3;
-    }
-
-    /* Title text */
-    .hud-stat-title {
-        font-size: 18px;
-        font-weight: 900;
-        color: rgba(255,255,255,0.94);
-        line-height: 1.3;
-    }
 
     /* ---------- RULEBOOK STYLING ---------- */
     .rulebook{
@@ -1161,20 +1125,6 @@ st.markdown(
         font-weight: 750;
         line-height: 1.65;
         font-size: 14px;
-    }
-
-    .rulebook h4{
-        margin: 14px 0 8px 0;
-        font-size: 15px;
-        font-weight: 950;
-        letter-spacing: 0.4px;
-        color: rgba(180,255,255,0.95);
-        text-shadow: 0 0 12px rgba(0,220,255,0.35);
-    }
-
-    .rulebook strong{
-        color: rgba(255,255,255,0.97);
-        font-weight: 950;
     }
 
     .rulebook ul{
@@ -1185,35 +1135,6 @@ st.markdown(
         margin: 4px 0;
     }
 
-    .rulebook hr{
-        border: none;
-        height: 1px;
-        margin: 12px 0;
-        background: linear-gradient(90deg, rgba(0,220,255,0.00), rgba(0,220,255,0.35), rgba(0,220,255,0.00));
-    }
-
-    .rulebook-core{
-        padding: 12px 14px;
-        border-radius: 12px;
-        border: 1px solid rgba(0,220,255,0.35);
-        background: rgba(0,3,20,0.45);
-        box-shadow: inset 0 0 14px rgba(0,220,255,0.10);
-        margin-bottom: 12px;
-    }
-    .rulebook-core-title{
-        font-weight: 950;
-        letter-spacing: 0.6px;
-        color: rgba(255,255,255,0.98);
-        text-shadow: 0 0 12px rgba(0,220,255,0.35);
-        margin-bottom: 8px;
-    }
-    .rulebook-core-line{
-        font-weight: 850;
-        opacity: 0.92;
-        margin: 4px 0;
-    }
-
-    /* ---------- RULEBOOK BOXES ---------- */
     .rulebook-wrap{
         display: flex;
         flex-direction: column;
@@ -1244,46 +1165,6 @@ st.markdown(
         font-size: 14px;
     }
 
-    /* style lists inside the boxes */
-    .rulebox-body ul{
-        margin: 6px 0 0 18px;
-        padding: 0;
-    }
-    .rulebox-body li{
-        margin: 4px 0;
-    }
-    .rulebox-body strong{
-        color: rgba(255,255,255,0.97);
-        font-weight: 950;
-    }
-
-    /* keep the Core Rule callout slightly different */
-    .rulebox.core{
-        border: 1px solid rgba(0,220,255,0.40);
-        background: rgba(0,3,20,0.60);
-    }
-    .rulebox.core .rulebox-title{
-        color: rgba(255,255,255,0.98);
-    }
-
-    /* Rulebook body typography inside boxes */
-    .rulebox-body{
-        opacity: 0.92;
-        font-weight: 750;
-        line-height: 1.65;
-        font-size: 14px;
-    }
-
-    /* lists */
-    .rulebox-body ul{
-        margin: 8px 0 0 18px;
-        padding: 0;
-    }
-    .rulebox-body li{
-        margin: 5px 0;
-    }
-
-    /* subtitles like "Physical", "Mental" */
     .rulebox-subtitle{
         margin-top: 10px;
         font-weight: 950;
@@ -1293,7 +1174,6 @@ st.markdown(
         text-shadow: 0 0 10px rgba(0,220,255,0.25);
     }
 
-    /* code ticks */
     .rulebox-body code{
         padding: 1px 6px;
         border-radius: 8px;
@@ -1303,7 +1183,6 @@ st.markdown(
         font-weight: 900;
     }
 
-    /* mild spacer for paragraph breaks */
     .rb-spacer{ height: 8px; }
 
     @media (max-width: 600px){
@@ -1372,23 +1251,16 @@ title = title_for_level(level)
 # Raw level (for UI bars that should NOT move when debt changes)
 level_raw, _xp_in_level_raw_for_title, _xp_required_raw_for_title = compute_level(xp_total, MAX_LEVEL)
 
-# Title bar values (you already had these)
 title_next_raw = title_next_threshold(level_raw)
 title_pct = 0 if title_next_raw <= 0 else max(0, min(100, (level_raw / title_next_raw) * 100))
 
 # XP Gain bar should NOT be affected by debt
-# Level is still based on floored effective XP rules (compute_level floors internally)
 level_raw, _xin_raw_int, xp_required_raw = compute_level(xp_total, MAX_LEVEL)
 
-# Total XP required to reach the START of current level (sum_{l=1}^{level-1} l*10)
 xp_spent_before_level = 10.0 * (level_raw - 1) * level_raw / 2.0
-
-# XP inside level uses RAW xp_total so decimals show
 xp_in_level_display = max(0.0, float(xp_total) - xp_spent_before_level)
 
 xp_required_display = float(xp_required_raw)
-
-# Clamp inside-level XP so bar never overflows
 xp_in_level_display = min(xp_in_level_display, xp_required_display)
 
 xp_pct = 0.0 if xp_required_display <= 0 else max(
@@ -1484,7 +1356,6 @@ with col_hud:
     )
 
 with col_panel:
-    # ---------- DAILY QUESTS (RIGHT COLUMN, ABOVE MENU) ----------
     ensure_daily_quests_in_session_from_meta()
 
     dq = st.session_state.get("daily_quests", {}) or {}
@@ -1518,7 +1389,6 @@ with col_panel:
         unsafe_allow_html=True,
     )
 
-    # ---------- MENU ----------
     menu_options = [
         "XP Breakdown",
         "XP Wall Debt",
@@ -1714,7 +1584,7 @@ with col_panel:
             f"""
             <div class="xp-row">
                 <div class="xp-name">{code}</div>
-                <div class="xp-val">{int(val)}/100</div>
+                <div class="xp-val">{int(val)}</div>
             </div>
             """
             for code, val in stats_dict.items()
@@ -1739,16 +1609,24 @@ with col_panel:
             pick = st.selectbox("Stat", list(stats_dict.keys()), key=f"{widget_prefix}_stat")
 
         with s_mode:
-            mode = st.selectbox("Mode", ["Add", "Minus"], key=f"{widget_prefix}_mode")
+            mode = st.selectbox("Mode", ["Add", "Add 10", "Minus"], key=f"{widget_prefix}_mode")
 
         with s_apply:
             go = st.button("Apply", key=f"{widget_prefix}_apply")
 
         if go:
-            cur = int(st.session_state.stats[group_key].get(pick, 0))
-            cur = cur + 1 if mode == "Add" else cur - 1
-            cur = max(0, min(100, cur))
+            cur = int(st.session_state.stats[group_key].get(pick, 1))
+
+            if mode == "Add 10":
+                cur += 10
+            elif mode == "Add":
+                cur += 1
+            else:
+                cur -= 1
+
+            cur = max(1, min(1000, cur))
             st.session_state.stats[group_key][pick] = int(cur)
+
             save_all(
                 event_type="stat_adjust",
                 payload={
@@ -1784,7 +1662,6 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # default to 50
         limit = st.selectbox("Show last", [50, 100, 200, 500, 1000], index=0, key="log_limit")
 
         logs = []
@@ -1805,10 +1682,11 @@ with col_panel:
                 group = p.get("group", "")
                 mode = p.get("mode", "")
                 newv = p.get("new_value", None)
-                gain_word = "Gain" if mode == "Add" else "Loss"
+                is_gain = mode in ("Add", "Add 10")
+                gain_word = "Gain" if is_gain else "Loss"
                 if newv is not None:
-                    return f"{ts} - {group} Stats {gain_word} by 1 ({int(newv)}/100)"
-                return f"{ts} - {group} Stats {gain_word} by 1"
+                    return f"{ts} - {group} Stats {gain_word} ({int(newv)})"
+                return f"{ts} - {group} Stats {gain_word}"
 
             if event_type == "xp_adjust":
                 cat = p.get("category", "")
@@ -1893,7 +1771,6 @@ with col_panel:
         )
 
     elif section == "Rule Book":
-        # OPEN panel + wrap
         st.markdown(
             """
             <div class="panel">
@@ -1903,7 +1780,6 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # Core Rule box
         st.markdown(
             """
             <div class="rulebox core">
@@ -1918,194 +1794,12 @@ with col_panel:
             unsafe_allow_html=True,
         )
 
-        # IMPORTANT: sections must be defined BEFORE the loop
         sections = [
-            ("1) What This System Tracks (Actual)", """
-    - **XP (by category)**: your stored XP totals (can include decimals)
-    - **XP Wall Debt (by category)**: your stored debt totals (can include decimals)
-    - **Effective XP** = max(0, Total XP − Total Debt)
-    - **Level + Title (displayed)**: computed from **Effective XP**
-    - **XP Gain bar (UI)**: computed from **Raw Total XP** (NOT affected by debt)
-    - **Title Gain bar (UI)**: computed from **Raw Total XP** via the raw level (NOT affected by debt)
-    - **Stats**: manual attributes clamped 0–100
-    """),
-            ("2) XP & Debt Interaction (Actual Logic)", """
-    - **Effective XP = max(0, Total XP − Total Debt)**
-    - If **Total Debt > 0** and you **Add XP**, the system runs debt payoff first:
-    - It pays down debt **proportionally across ALL debt categories** based on each category’s share of total debt at the moment of payment.
-    - If tiny rounding remainder exists, a cleanup pass finishes paying down remaining debt until the payment amount is fully applied.
-    - Only the **leftover XP after debt payment** is added to your chosen XP category.
-    - If you **Minus XP**, it only reduces that XP category (never increases debt).
-    """),
-            ("3) Level System (Actual Logic)", """
-    - Level is computed using **floored integer XP**.
-    - The system uses `int(math.floor(xp))` before calculating levels (decimals do not count).
-    - Requirement to go from Level **L** to **L+1** is **L × 10 XP**.
-    - Starting at Level 1, the system repeatedly subtracts the current requirement until it can’t.
-    - The leftover is your **XP inside the current level**.
-    """),
-            ("4) Titles by Level Range (Used for Displayed Title)", """
-    - Novice → Levels 1–5
-    - Trainee → Levels 6–10
-    - Adept → Levels 11–15
-    - Knight → Levels 16–20
-    - Champion → Levels 21–25
-    - Elite → Levels 26–30
-    - Legend → Levels 31–35
-    - Mythic → Levels 36–40
-    - Master → Levels 41–45
-    - Grandmaster → Levels 46–50
-    - Ascendant → Levels 51–55
-    - Exemplar → Levels 56–60
-    - Paragon → Levels 61–65
-    - Titan → Levels 66–70
-    - Sovereign → Levels 71–75
-    - Immortal-Seed → Levels 76–80
-    - Immortal → Levels 81–85
-    - Eternal-Seed → Levels 86–90
-    - Eternal → Levels 91–95
-    - World-Class → Levels 96–100
-    """),
-            ("5) What the 3 Bars Mean (Important UI Rules)", """
-    - **XP Gain bar**: progress inside current level computed from **Raw Total XP** (debt does NOT move this bar).
-    - **Title Gain bar**: progress toward next title threshold using **Raw Level** derived from **Raw Total XP** (debt does NOT move this bar).
-    - **XP Debt bar**: shows Total Debt relative to **DEBT_CAP = 100** (display only).
-    """),
-            ("6) XP Earnable Actions (Rates Used by the XP Adjust Tool)", """
-    **Per-hour categories:**
-    - Admin Work → 0.5 XP per hour
-    - Design Work → 1.0 XP per hour
-    - Gym Workout → 3.0 XP per hour
-    - Jiu Jitsu Training → 4.0 XP per hour
-    - Italian Studying → 2.0 XP per hour
-    - Italian Passive listening → 0.2 XP per hour
-    - Chess - Rated Matches → 2.0 XP per hour
-    - Chess - Study/ Analysis → 1.0 XP per hour
-    - Reading → 1.5 XP per hour
-    - New Skill Learning → 2.4 XP per hour
-    - Personal Challenge Quest → 3.6 XP per hour
-    - Recovery → 1.6 XP per hour
-    - Creative Output → 2.0 XP per hour
-    - General Life Task → 0.8 XP per hour
-
-    **Quest completion categories:**
-    - Quest 1 → +3.0 XP (Completion)
-    - Quest 2 → +2.0 XP (Completion)
-    - Quest 3 → +1.0 XP (Completion)
-
-    **Streak categories:**
-    - Chess Streak → +1.0 XP
-    - Italian Streak → +1.0 XP
-    - Gym Streak → +1.0 XP
-    - Jiu Jitsu Streak → +1.0 XP
-    - Eating Healthy → +1.0 XP
-    - Meet Hydration target → +1.0 XP
-    """),
-            ("7) XP Wall Debt Penalties (Used by the Debt Adjust Tool)", """
-    **Normal debt categories (each Add applies the listed amount):**
-    - Skip Training → 2.0 XP debt
-    - Junk Eating → 2.0 XP debt
-    - Drug Use → 5.0 XP debt
-    - Blackout Drunk → 3.0 XP debt
-    - Reckless Driving → 4.0 XP debt
-    - Start Fight → 3.0 XP debt
-    - Doomscrolling → 1.5 XP debt
-    - Miss Work → 4.0 XP debt
-    - Impulsive Spend → 2.5 XP debt
-    - Malicious Deceit → 2.0 XP debt
-    - Break Oath → 6.0 XP debt
-    - All Nighter → 2.0 XP debt
-    - Avoid Duty → 2.0 XP debt
-    - Ignore Injury → 2.5 XP debt
-    - Miss Hydration → 1.0 XP debt
-    - Sleep Collapse → 2.0 XP debt
-    - Ghost Obligation → 3.5 XP debt
-    - Ego Decisions → 2.0 XP debt
-    - No Logging → 1.0 XP debt
-    - Message Pile → 1.5 XP debt
-    - Quest Miss → 3.0 XP debt *(manual judgement; the system does not enforce conditions)*
-
-    **Oath debt categories (each Add applies +6.0 XP debt):**
-    - Oath: No Cheating
-    - Oath: No Betrayal of Trust
-    - Oath: No Stealing
-    - Oath: No Harm Defenseless
-    - Oath: No Malicious Exploit
-    - Oath: Honor Commitments
-    - Oath: Compete w/ Integrity
-    - Oath: Accountability
-    - Oath: No Sabotage Others
-
-    **Important:** The system allows both **Break Oath** and individual **Oath: ...** categories. Don’t double-penalize unless intentional.
-    """),
-            ("8) Stats (Actual Rules)", """
-    - Stats are stored under: Physical, Mental, Social, Skill.
-    - Stats are clamped to **0–100**.
-    - The Adjust Stats tool changes values by **±1** per click.
-    """),
-            ("9) Coin Economy (Design Only)", """
-    - £1 = 1 Coin
-    - £180 = 180 Coins
-    - £600/week = 600 Coins/week
-    - Coins are **not implemented** in the current code.
-    """),
-            ("10) Stats Meaning Scale (Design Lore)", """
-    - **-100** → extreme impairment / minimal motor-cognitive function
-    - **-50** → far below average adult
-    - **-40 to -10** → below-average adult variation band
-    - **0** → average untrained adult male baseline
-    - **+50** → trained competitive amateur
-    - **+65** → advanced regional amateur competitor
-    - **+80** → national competitor
-    - **+95** → elite international competitor
-    - **100** → best verified human performance
-    - Negative stats are **not active** unless you expand the range
-    """),
-            ("11) How to Measure Stats (Reference Benchmarks)", """
-    **Physical**
-    - **PUSH** → Max push-up test *(avg 25 reps)*
-    - **PULL** → Max pull-up test *(avg 2 reps)*
-    - **SPD** → 100m sprint test *(avg 16.5s)*
-    - **STM** → 5km run test *(avg 35 min)*
-    - **DUR** → Recovery benchmark after stress tests
-    - **BAL** → Single-leg stand test *(avg 45 sec)*
-    - **FLX** → Sit-and-reach test *(avg 30 cm)*
-    - **RFLX** → Visual reaction time *(avg 230 ms)*
-    - **POW** → Power output benchmark *(e.g., medicine ball throw distance)*
-
-    **Mental**
-    - **LRN** → Recall test after short structured learning
-    - **LOG** → Logic benchmark *(e.g., 20-question reasoning test)*
-    - **MEM** → Digit or item span recall benchmark
-    - **STRAT** → Scenario planning depth benchmark
-    - **FOCUS** → Continuous attention benchmark test
-    - **CREAT** → Originality or idea-generation benchmark
-    - **AWARE** → Observation & environment recall test
-    - **JUDG** → Scenario decision-quality scoring
-    - **CALM** → Accuracy + heart-rate under pressure
-
-    **Social**
-    - **SOC** → Social initiation & comfort benchmarks
-    - **LEAD** → Responsibility & group direction audit
-    - **NEG** → Negotiation/persuasion scenario benchmark
-    - **COM** → Explanation clarity & articulation scoring
-    - **EMP** → Emotion recognition & EQ benchmark
-    - **PRES** → Posture & body-language presence audit
-
-    **Skill**
-    - **CHESS** → Rated match benchmark *(e.g., 10-game rating avg)*
-    - **ITALIAN** → A1 assessment benchmark *(reading/speaking/comprehension)*
-    - **JIU-JITSU** → Belt rank or coached evaluation
-    """),
-            ("12) System Constraints (Mechanics Do Not Auto-Trigger)", """
-    - Stats are clamped to **0..100**
-    - Coins are **not implemented**
-    - Levels use **floored integer XP**
-    - Rulebook text does **not activate mechanics** without implemented logic
+            ("Coming soon!", """
+Coming soon!
     """),
         ]
 
-        # Render each section as a separate box
         for title_text, body_md in sections:
             body_html = rule_md_to_html(body_md)
             st.markdown(
@@ -2118,7 +1812,6 @@ with col_panel:
                 unsafe_allow_html=True,
             )
 
-        # CLOSE wrap + panel (this goes LAST, still inside the Rule Book branch)
         st.markdown("</div></div>", unsafe_allow_html=True)
 
 # ---------- SETTINGS ----------
@@ -2155,4 +1848,6 @@ with st.expander("⚙️ Settings", expanded=False):
     with c6:
         if st.button("Reset Skill Stats", key="reset_skill_btn"):
             reset_stats_group("Skill")
+
             
+
