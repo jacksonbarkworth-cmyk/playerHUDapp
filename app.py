@@ -12,70 +12,255 @@ from zoneinfo import ZoneInfo
 st.set_page_config(page_title="Player HUD", layout="wide")
 
 # ---------- PIN GATE ----------
-APP_PIN = "681"  # NOTE: this is not real security if shipped to users.
+APP_PIN = "681"  # NOTE: not real security
 
+# session flags
 if "authed" not in st.session_state:
     st.session_state.authed = False
 if "welcomed" not in st.session_state:
     st.session_state.welcomed = False
 
+# safe pin clearing pattern (avoids StreamlitAPIException)
+if "_clear_pin_next" not in st.session_state:
+    st.session_state._clear_pin_next = False
 
-def pin_gate():
+
+def _gate_styles():
     st.markdown(
         """
-        <div style="padding:22px; border-radius:14px; background: rgba(0,3,20,0.60);
-                    border: 2px solid rgba(0,220,255,0.55);
-                    box-shadow: 0 0 26px rgba(0,220,255,0.7), inset 0 0 16px rgba(0,220,255,0.25);">
-          <div style="font-size:28px; font-weight:950; color:white; text-shadow: 0 0 18px rgba(0,220,255,0.85);">
-            Loading...
-          </div>
-          <div style="margin-top:10px; font-size:14px; font-weight:900; opacity:0.9;">
-            Enter your pin to enter
-          </div>
-        </div>
+        <style>
+        /* --- gate background matches HUD --- */
+        [data-testid="stApp"]{
+            background:
+                linear-gradient(180deg, #020412 0%, #0a0f28 60%, #121845 100%),
+                radial-gradient(circle at 80% 50%, rgba(0,255,255,0.18), transparent 55%),
+                repeating-linear-gradient(90deg, rgba(0,255,255,0.03) 0px, rgba(0,255,255,0.03) 1px, transparent 1px, transparent 40px),
+                repeating-linear-gradient(180deg, rgba(0,255,255,0.03) 0px, rgba(0,255,255,0.03) 1px, transparent 1px, transparent 40px);
+            background-blend-mode: normal, screen, normal, normal;
+            min-height: 100vh;
+            color: white;
+        }
+        header, [data-testid="stHeader"], [data-testid="stToolbar"] { background: transparent !important; }
+
+        /* tighter page padding on gate */
+        section.main > div.block-container{
+            padding-top: 20px !important;
+            padding-bottom: 22px !important;
+            max-width: 560px !important;
+        }
+
+        /* --- gate card --- */
+        .gate-wrap{
+            border-radius: 16px;
+            background: rgba(0,3,20,0.62);
+            border: 2px solid rgba(0,220,255,0.55);
+            box-shadow: 0 0 26px rgba(0,220,255,0.60), inset 0 0 16px rgba(0,220,255,0.18);
+            padding: 18px 18px 16px 18px;
+        }
+        .gate-top{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap: 12px;
+        }
+        .gate-title{
+            font-weight: 950;
+            font-size: 26px;
+            letter-spacing: 0.5px;
+            color: rgba(255,255,255,0.98);
+            text-shadow: 0 0 18px rgba(0,220,255,0.85);
+            line-height: 1.05;
+        }
+        .gate-sub{
+            margin-top: 6px;
+            font-size: 13px;
+            font-weight: 800;
+            color: rgba(255,255,255,0.75);
+            letter-spacing: 0.2px;
+        }
+        .gate-divider{
+            height: 1px;
+            background: linear-gradient(90deg, rgba(0,220,255,0.05), rgba(0,220,255,0.45), rgba(0,220,255,0.05));
+            margin: 12px 0 0 0;
+        }
+        .gate-badge{
+            width: 44px;
+            height: 44px;
+            border-radius: 999px;
+            border: 2px solid rgba(0,220,255,0.55);
+            box-shadow: 0 0 18px rgba(0,220,255,0.55), inset 0 0 12px rgba(0,220,255,0.20);
+            background: rgba(0,3,20,0.55);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color: rgba(180,255,255,0.95);
+            font-weight: 950;
+        }
+        .gate-label{
+            font-size: 12px;
+            font-weight: 900;
+            color: rgba(255,255,255,0.82);
+            text-shadow: 0 0 10px rgba(0,220,255,0.45);
+            letter-spacing: 0.3px;
+            margin: 0 0 8px 0;
+        }
+
+        /* --- PIN input neon --- */
+        div[data-testid="stTextInput"] input{
+            border-radius: 12px !important;
+            background: rgba(0,3,20,0.55) !important;
+            border: 2px solid rgba(0,220,255,0.55) !important;
+            box-shadow:
+                0 0 18px rgba(0,220,255,0.40),
+                inset 0 0 12px rgba(0,220,255,0.18) !important;
+            color: #e8fbff !important;
+            font-weight: 900 !important;
+            min-height: 46px !important;
+        }
+        div[data-testid="stTextInput"] input:focus{
+            border: 2px solid rgba(0,255,255,0.95) !important;
+            box-shadow:
+                0 0 26px rgba(0,255,255,0.70),
+                inset 0 0 14px rgba(0,255,255,0.20) !important;
+        }
+
+        /* --- ENTER button neon (this is the real fix) --- */
+        div[data-testid="stButton"] > button,
+        button[data-testid^="baseButton-"]{
+            width: 100% !important;
+            min-height: 46px !important;
+            padding: 12px 14px !important;
+
+            border-radius: 12px !important;
+            border: 2px solid rgba(0,220,255,0.70) !important;
+
+            background: rgba(0,3,20,0.55) !important;
+            background-image: none !important;
+
+            color: #e8fbff !important;
+            font-weight: 950 !important;
+            letter-spacing: 0.6px !important;
+
+            box-shadow:
+                0 0 22px rgba(0,220,255,0.75),
+                0 0 52px rgba(0,220,255,0.35),
+                inset 0 0 14px rgba(0,220,255,0.22) !important;
+        }
+
+        div[data-testid="stButton"] > button:hover,
+        button[data-testid^="baseButton-"]:hover{
+            border: 2px solid rgba(0,255,255,0.95) !important;
+            box-shadow:
+                0 0 28px rgba(0,255,255,0.85),
+                0 0 64px rgba(0,255,255,0.40),
+                inset 0 0 16px rgba(0,255,255,0.25) !important;
+        }
+
+        div[data-testid="stButton"] > button:active,
+        button[data-testid^="baseButton-"]:active{
+            transform: translateY(1px) !important;
+        }
+        </style>
         """,
         unsafe_allow_html=True,
     )
 
-    pin = st.text_input("PIN", type="password", label_visibility="collapsed", key="pin_input")
-    go = st.button("Enter", key="pin_enter_btn")
+def _gate_card_start(title: str, subtitle: str, badge: str = "JB"):
+    _gate_styles()
+    st.markdown(
+        f"""
+        <div class="gate-root">
+          <div class="gate-wrap">
+            <div class="gate-top">
+              <div style="min-width:0;">
+                <div class="gate-title">{html.escape(title)}</div>
+                <div class="gate-sub">{html.escape(subtitle)}</div>
+              </div>
+              <div class="gate-badge">{html.escape(badge)}</div>
+            </div>
+            <div class="gate-divider"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _gate_card_end():
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+
+def pin_gate():
+    # clear safely BEFORE widget creation
+    if st.session_state.get("_clear_pin_next", False):
+        st.session_state._clear_pin_next = False
+        st.session_state["pin_input"] = ""
+
+    _gate_card_start("Access Gate", "Enter your PIN to load the HUD.")
+
+    # space away from the box (your request)
+    st.markdown('<div style="height:34px;"></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="gate-label">PIN</div>', unsafe_allow_html=True)
+    pin = st.text_input("", type="password", label_visibility="collapsed", key="pin_input")
+
+    st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
+
+    go = st.button("Enter", key="pin_enter_btn")  # ONLY ENTER BUTTON
 
     if go:
         if str(pin).strip() == APP_PIN:
             st.session_state.authed = True
             st.session_state.welcomed = False
-            st.session_state.pin_input = ""  # clear input
+            st.session_state._clear_pin_next = True
             st.rerun()
         else:
+            st.session_state._clear_pin_next = True
             st.error("Incorrect PIN.")
+            st.rerun()
+
+    _gate_card_end()
 
 
 def welcome_screen():
+    _gate_card_start("Welcome", "Loading your HUD…")
+
+    st.markdown('<div style="height:18px;"></div>', unsafe_allow_html=True)
+
     st.markdown(
         """
-        <div style="padding:22px; border-radius:14px; background: rgba(0,3,20,0.60);
-                    border: 2px solid rgba(0,220,255,0.55);
-                    box-shadow: 0 0 26px rgba(0,220,255,0.7), inset 0 0 16px rgba(0,220,255,0.25);">
-          <div style="font-size:26px; font-weight:950; color:white; text-shadow: 0 0 18px rgba(0,220,255,0.85);">
+        <div style="
+            font-weight:950;
+            font-size: 18px;
+            color: rgba(255,255,255,0.94);
+            text-shadow: 0 0 14px rgba(0,220,255,0.55);
+        ">
             Welcome Jackson Barkworth
-          </div>
+        </div>
+        <div style="
+            margin-top: 10px;
+            font-size: 12px;
+            font-weight: 850;
+            color: rgba(180,255,255,0.80);
+        ">
+            Initialising…
         </div>
         """,
         unsafe_allow_html=True,
     )
-    # brief pause then proceed
-    time.sleep(0.9)
+
+    _gate_card_end()
+    time.sleep(0.75)
     st.session_state.welcomed = True
     st.rerun()
 
-    # Gate the entire app BEFORE any cloud load / heavy init
-    if not st.session_state.authed:
-        pin_gate()
-        st.stop()
 
-    if not st.session_state.welcomed:
-        welcome_screen()
-        st.stop()
+# ---------- GATE THE APP ----------
+if not st.session_state.authed:
+    pin_gate()
+    st.stop()
+
+if not st.session_state.welcomed:
+    welcome_screen()
+    st.stop()
 
 # ---------- TIMEZONE ----------
 USER_TZ = ZoneInfo("Europe/London")
@@ -1917,6 +2102,9 @@ with st.expander("⚙️ Settings", expanded=False):
             reset_stats_group("Skill")
 
 
+
+
             
+
 
 
